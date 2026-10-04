@@ -90,7 +90,7 @@ test('validates room options and publishes authoritative menu state', async t =>
 });
 
 test('rejects duplicate names and a sixth player without changing membership', async t => {
-  const f = await fixture(t); const r = await f.room();
+  const f = await fixture(t); const r = await f.room({spectatorSlots:1});
   const newcomer = await f.connect();
   const duplicate = await newcomer.request({type:'JOIN_ROOM', playerId:' a ', roomId:r.roomId}, 'ERROR');
   assert.match(duplicate.message, /already in use/);
@@ -216,6 +216,25 @@ test('room option updates reject active phases, cross-room requests, and spectat
   room.spectators.push('watcher');
   const overflow = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{spectatorSlots:0}}, 'ERROR');
   assert.match(overflow.message, /Spectator positions are full/);
+});
+
+test('SKIP_COMPARISON is player-only, requires settlement, and broadcasts all votes', async t => {
+  const f = await fixture(t); const r = await f.room({spectatorSlots:1});
+  const active = await r.host.request({type:'SKIP_COMPARISON',roomId:r.roomId}, 'ERROR');
+  assert.match(active.message, /Game has not started/);
+  const spectator = await f.connect();
+  const roomState = await spectator.request({type:'JOIN_ROOM',playerId:'watcher',role:'SPECTATOR',roomId:r.roomId}, 'ROOM_STATE');
+  await r.host.next('ROOM_STATE'); await r.guest.next('ROOM_STATE');
+  const game = f.server.manager.get(r.roomId).game = new (require('../src/game').GameRoom)({players:['a','b']});
+  game.phase = 'SETTLEMENT'; game.lastResult = {success:true,comparisons:[]};
+  const denied = await spectator.request({type:'SKIP_COMPARISON',roomId:r.roomId}, 'ERROR');
+  assert.match(denied.message, /Spectators cannot/);
+  const first = await r.host.request({type:'SKIP_COMPARISON',roomId:r.roomId}, 'ROOM_STATE'); await r.guest.next('ROOM_STATE');
+  assert.deepEqual(first.state.comparisonSkipVotes, ['a']); assert.equal(first.state.comparisonSkip, false);
+  const duplicate = await r.host.request({type:'SKIP_COMPARISON',roomId:r.roomId}, 'ROOM_STATE'); await r.guest.next('ROOM_STATE');
+  assert.deepEqual(duplicate.state.comparisonSkipVotes, ['a']);
+  const complete = await r.guest.request({type:'SKIP_COMPARISON',roomId:r.roomId}, 'ROOM_STATE'); await r.host.next('ROOM_STATE');
+  assert.deepEqual(complete.state.comparisonSkipVotes.sort(), ['a','b']); assert.equal(complete.state.comparisonSkip, true);
 });
 
 test('protocol heartbeat keeps an idle client alive without game actions', {timeout: 3000}, async t => {
