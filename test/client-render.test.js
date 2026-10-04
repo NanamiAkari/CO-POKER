@@ -131,7 +131,7 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   });
   assert.match(table, /disabled aria-label="选择硬币 2"/);
   assert.match(table, /aria-label="归还硬币 1"/);
-  assert.equal((table.match(/class="playing-card" aria-label="牌背"/g) || []).length, 7);
+  assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
 });
 
 test('result only renders a single stage with card images, never stacked result panels', async () => {
