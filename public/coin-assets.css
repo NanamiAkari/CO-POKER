@@ -1,0 +1,25 @@
+/* Coin tokens share a stable hitbox so sprite loading or animation never shifts the table. */
+.coin-button,.coin-token,.opponent-coin,.coin.current,.history-coins .coin{position:relative;isolation:isolate;overflow:hidden;display:grid;place-items:center;padding:0;line-height:1;transform-origin:center;}
+.coin-sprite{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;position:relative;z-index:1;filter:drop-shadow(0 3px 3px #0008);}
+.coin-token,.opponent-coin,.coin.current{transition:transform .18s ease,filter .18s ease,box-shadow .18s ease;}
+.coin-token::after,.opponent-coin::after,.coin.current::after{content:"";position:absolute;inset:7%;border-radius:50%;border:1px solid #fff8;opacity:.45;pointer-events:none;z-index:2;}
+.coin-token:hover,.opponent-coin:hover,.coin.current:hover{transform:translateY(-5px) scale(1.08);filter:brightness(1.12);box-shadow:0 8px 15px #0008;}
+.coin-token:active,.opponent-coin:active,.coin.current:active{transform:translateY(-1px) scale(.96);}
+.coin-token:disabled{opacity:.38;cursor:not-allowed;filter:grayscale(.7);transform:none;box-shadow:none;}
+.coin-token .coin-sprite,.opponent-coin .coin-sprite{animation:coin-idle 2.8s ease-in-out infinite;}
+.coin-token:hover .coin-sprite,.opponent-coin:hover .coin-sprite,.coin.current:hover .coin-sprite{animation:coin-pulse .55s ease-in-out infinite alternate;}
+.coin.current .coin-sprite{animation:coin-selected .9s ease-in-out infinite alternate;}
+.history-coins .coin{width:29px;height:29px;border:0;background:transparent;}
+.history-coins .coin-sprite{animation:none;filter:drop-shadow(0 2px 2px #0007);}
+@keyframes coin-idle{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+@keyframes coin-pulse{from{transform:scale(1)}to{transform:scale(1.07)}}
+@keyframes coin-selected{from{filter:drop-shadow(0 0 2px #f8d76a)}to{filter:drop-shadow(0 0 9px #ffe796)}}
+.coin-flight{position:absolute;z-index:35;width:48px;height:48px;pointer-events:none;display:grid;place-items:center;animation:coin-flight-path .78s cubic-bezier(.2,.75,.25,1) both;filter:drop-shadow(0 8px 7px #0009)}
+.coin-flight::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid #ffe18a99;box-shadow:0 0 16px #ffdb5b99;animation:coin-flight-ring .78s ease-out both}
+.coin-flight .coin-sprite{animation:coin-flight-spin .78s cubic-bezier(.2,.75,.25,1) both}
+.coin-landed{animation:coin-landed .55s ease-out both;}
+@keyframes coin-flight-path{0%{opacity:0;transform:translate(0,0) scale(.6)}12%{opacity:1}45%{transform:translate(calc(var(--flight-dx)*.48),calc(var(--flight-dy)*.48 - 34px)) scale(1.15)}82%{opacity:1}100%{opacity:0;transform:translate(var(--flight-dx),var(--flight-dy)) scale(.84)}}
+@keyframes coin-flight-spin{from{transform:rotateY(0deg) rotateZ(-10deg)}to{transform:rotateY(720deg) rotateZ(12deg)}}
+@keyframes coin-flight-ring{0%,30%{opacity:0;transform:scale(.55)}50%{opacity:.85}100%{opacity:0;transform:scale(1.25)}}
+@keyframes coin-landed{0%{filter:brightness(1);transform:scale(1)}35%{filter:brightness(1.45) drop-shadow(0 0 12px #ffe078);transform:scale(1.12)}100%{filter:brightness(1);transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.coin-token .coin-sprite,.opponent-coin .coin-sprite,.coin.current .coin-sprite{animation:none}.coin-token,.opponent-coin,.coin.current{transition:none}}

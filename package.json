@@ -1,0 +1,14 @@
+{
+  "name": "cooperative-poker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "vue": "^3.5.43",
+    "ws": "^8.21.3"
+  }
+}

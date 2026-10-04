@@ -1,0 +1,87 @@
+name: Release to production
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copoker-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.meta.outputs.release_id }}
+    steps:
+      - name: Resolve release ref
+        id: ref
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: echo "ref=${INPUT_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build release archive
+        id: meta
+        env:
+          RELEASE_TAG: ${{ steps.ref.outputs.ref }}
+        run: |
+          release_id="${RELEASE_TAG}-${GITHUB_SHA::12}"
+          mkdir -p release
+          cp -a public src package.json package-lock.json ecosystem.config.cjs deploy/install-release.sh release/
+          tar -czf "release-${release_id}.tar.gz" -C release public src package.json package-lock.json ecosystem.config.cjs deploy
+          sha256sum "release-${release_id}.tar.gz" > "release-${release_id}.sha256"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: copoker-release-${{ steps.meta.outputs.release_id }}
+          path: release-*
+          if-no-files-found: error
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: copoker-release-${{ needs.verify.outputs.release_id }}
+      - name: Prepare SSH
+        env:
+          PROD_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PROD_KEY" > ~/.ssh/copoker_deploy
+          chmod 600 ~/.ssh/copoker_deploy
+          ssh-keyscan -p "${PROD_PORT:-22}" -H "$PROD_HOST" >> ~/.ssh/known_hosts
+      - name: Upload release
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          RELEASE_ID: ${{ needs.verify.outputs.release_id }}
+        run: |
+          archive="release-${RELEASE_ID}.tar.gz"
+          ssh -i ~/.ssh/copoker_deploy -p "${PROD_PORT:-22}" "${PROD_USER:-root}@${PROD_HOST}" "mkdir -p /tmp/copoker-release"
+          scp -i ~/.ssh/copoker_deploy -P "${PROD_PORT:-22}" "$archive" "${PROD_USER:-root}@${PROD_HOST}:/tmp/copoker-release/$archive"
+          scp -i ~/.ssh/copoker_deploy -P "${PROD_PORT:-22}" deploy/install-release.sh "${PROD_USER:-root}@${PROD_HOST}:/tmp/copoker-release/install-release.sh"
+          ssh -i ~/.ssh/copoker_deploy -p "${PROD_PORT:-22}" "${PROD_USER:-root}@${PROD_HOST}" "chmod 700 /tmp/copoker-release/install-release.sh && /tmp/copoker-release/install-release.sh /tmp/copoker-release/$archive '$RELEASE_ID'"

@@ -1,0 +1,47 @@
+/* Settlement occupies a stable middle band of the 1200 x 760 table. */
+.settlement-scene .opponents{visibility:hidden;pointer-events:none}
+.settlement-scene .board,.settlement-scene .deck,.settlement-scene .phase-track{opacity:.1;pointer-events:none}
+.settlement-order{position:absolute;left:105px;right:105px;top:91px;height:110px;z-index:13;padding:12px 24px;background:linear-gradient(120deg,#19392fe8,#102b25e8);border:1px solid #b99b604f;border-radius:14px;box-shadow:0 8px 24px #0003}
+.order-heading{display:flex;align-items:center;justify-content:space-between;color:#a7b5a1;font-size:11px;letter-spacing:2px}
+.order-heading span:first-child{color:#d7c398}
+.order-heading i{font-style:normal;color:#d3b578;padding-left:6px}
+.order-line{position:relative;height:54px;margin-top:10px}
+.order-players{list-style:none;display:grid;grid-template-columns:var(--order-columns);align-items:center;gap:0;height:54px;margin:0;padding:0}
+.order-players li{position:relative;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;height:54px;border:1px solid transparent;border-radius:9px;transition:background .35s,border-color .35s,box-shadow .35s}
+.order-players li.current{border-color:#d8b46a86;background:#d7bc7120;box-shadow:0 0 20px #d2b86c18}
+.order-players img{width:43px;height:43px;flex:none;filter:drop-shadow(0 3px 2px #0007)}
+.order-player-name{font-size:13px;max-width:105px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#efe4cb}
+.order-player-name small{font-size:9px;color:#c6ae77;border:1px solid #c6ae7755;border-radius:4px;margin-left:6px;padding:1px 3px}
+.comparison-trail{position:absolute;inset:0;display:grid;grid-template-columns:var(--order-columns);align-items:center;gap:0;z-index:16;pointer-events:none}
+.comparison-marker{display:grid;place-items:center;justify-self:center;min-width:0;width:36px;height:36px;padding:0;border:0;background:transparent;border-radius:50%;pointer-events:auto}
+.comparison-marker:disabled{cursor:default;opacity:.6}
+.comparison-marker.active{opacity:1}
+.comparison-marker.active .marker-verdict{color:#e4c784;border:1px solid #d5b47070;box-shadow:0 0 12px #c6aa5b26}
+.comparison-marker.complete:hover .marker-verdict,.comparison-marker.inspected .marker-verdict{box-shadow:0 0 0 2px #d9bd7b77;filter:brightness(1.2)}
+.marker-verdict{width:25px;height:25px;display:grid;place-items:center;border-radius:50%;color:#83998a;font-size:17px;line-height:1;transition:box-shadow .2s,filter .2s}
+.complete .marker-verdict{border:1px solid #8acba77a;background:#2c614a;color:#b3e7c9;border-radius:50%;animation:verdict-stamp .45s cubic-bezier(.18,.8,.25,1) both}
+.complete.failed .marker-verdict{border-color:#d397837a;background:#6b3930;color:#f3b8a7}
+.settlement-scene .stage-center{top:225px;height:300px}
+.settlement-scene .summary-center{top:225px;height:300px;grid-template-columns:240px 1fr}
+.settlement-scene .summary-left{padding:0 24px 0 0}
+.settlement-scene .result-seal{width:45px;height:45px;font-size:25px;margin-bottom:8px}
+.settlement-scene .summary-left h3{font-size:21px;margin-bottom:8px}
+.settlement-scene .summary-right .five-cards .playing-card{width:61px;height:86px}
+.settlement-scene .summary-tabs{margin-bottom:8px}
+.settlement-scene .summary-name{margin-bottom:8px}
+.record-help{font-size:10px;color:#97ad9c;margin:11px 0 0}
+.comparison-detail{position:absolute;z-index:24;left:110px;right:110px;top:218px;height:307px;padding:24px 32px;border:1px solid #d0b374;border-radius:18px;background:linear-gradient(120deg,#1c4035,#102b24);box-shadow:0 18px 65px #0009;pointer-events:auto}
+.detail-heading{display:flex;justify-content:space-between;align-items:center;padding-right:40px;font-size:12px;letter-spacing:2px;color:#cbb681}
+.detail-heading strong{font-weight:500;padding:4px 11px;border-radius:30px;background:#76b18f24;color:#a8d9bb;font-size:12px;letter-spacing:1px}
+.detail-heading strong.failed{color:#f0ae98;background:#c6755726}
+.detail-close{position:absolute;top:12px;right:15px;width:29px;height:29px;border:1px solid #bca97155;border-radius:50%;background:#071e1b;color:#cbb681;font-size:21px;display:grid;place-items:center;line-height:1;padding:0}
+.detail-hands{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:66px;margin-top:10px}
+.detail-player{display:flex;align-items:center;justify-content:center;gap:9px;font-size:12px;margin-bottom:9px;height:32px}
+.detail-player img{width:30px;height:30px;flex:none}
+.detail-player span{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#efe4cb}
+.detail-player strong{color:#d3bb83;font-size:11px;font-weight:400;border-left:1px solid #bda46450;padding-left:9px}
+.detail-hands .playing-card{width:61px;height:86px}
+.detail-symbol{position:absolute;left:50%;top:71px;transform:translateX(-50%);font:32px Georgia,serif;color:#e4ca8b}
+.detail-reason{border-top:1px solid #a9986738;padding-top:11px;margin:14px 0 0;color:#c6d0bd;font-size:12px;line-height:1.7;text-align:center}
+@keyframes verdict-stamp{0%{opacity:0;transform:scale(1.5) rotate(-12deg)}75%{opacity:1;transform:scale(.92) rotate(3deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
+@media(prefers-reduced-motion:reduce){.complete .marker-verdict{animation:none}.order-players li,.comparison-marker{transition:none}}

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#132b26">
+  <title>CO-POKER · 德扑</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/game.css?v=20260930b">
+  <link rel="stylesheet" href="/rules.css?v=20260930b">
+  <link rel="stylesheet" href="/settlement.css?v=20261003b">
+</head>
+<body>
+<div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
+<div id="app" v-cloak>
+  <div class="world" :class="{'less-motion':prefs.reducedMotion}">
+    <main v-if="!inRoom" class="home">
+      <header class="masthead">
+        <div class="brand"><span class="brand-mark">♣</span><span>CO-POKER</span></div>
+        <div class="mast-actions"><button class="icon-button" aria-label="游戏设置" title="设置" @click="openPanel('settings')">⚙</button></div>
+      </header>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">多人合作卡牌游戏</div>
+          <h1>德扑<span>CO-POKER</span></h1>
+          <p class="tagline">根据自己的牌，选择代表排名的硬币。</p>
+          <div class="menu-main">
+            <button class="gold-button" @click="openPanel('create')">创建房间 <span aria-hidden="true">↗</span></button>
+            <button class="text-button" @click="openPanel('join')">加入房间 <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="meta"><span>2–5 人</span><span>联机合作</span></div>
+          <div class="menu-secondary">
+            <button class="menu-tile" @click="openPanel('rules')"><span class="tile-icon">♠</span><span>玩法手册<small>HOW TO PLAY</small></span></button>
+            <button class="menu-tile" @click="openPanel('settings')"><span class="tile-icon">☷</span><span>游戏设置<small>SETTINGS</small></span></button>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="art-mat"></div>
+          <img v-for="(card,i) in heroCards" :key="i" class="hero-card" :src="cardImage(card)" alt="">
+          <img class="hero-chip" :src="coinImage(1)" alt=""><img class="hero-chip chip-two" :src="coinImage(3)" alt="">
+        </div>
+      </section>
+      <footer class="home-footer"><span>CO-POKER</span><span class="footer-suits">♠ ♥ ♣ ♦</span><span>德扑</span></footer>
+    </main>
+
+    <main v-else class="game-viewport">
+      <div class="game-canvas" :class="{'settlement-scene':isResult}" :style="{'--game-scale':scale}" data-testid="game-canvas">
+        <header class="table-topbar">
+          <div class="brand"><span class="brand-mark">♣</span><span>CO-POKER</span></div>
+          <button class="room-tag" @click="copyRoom" aria-label="复制房间号" title="复制房间号"><span class="connection-dot" :class="{online:connected}"></span><small>ROOM</small>{{roomId}}</button>
+          <div class="table-tools">
+            <button class="icon-button" @click="openPanel('rules')" aria-label="玩法手册" title="规则">?</button>
+            <button class="icon-button" @click="openPanel('settings')" aria-label="游戏设置" title="设置">⚙</button>
+            <button class="icon-button" @click="requestLeave" aria-label="返回主菜单" title="离开牌桌">⌂</button>
+          </div>
+        </header>
+        <div class="table-rim"><div class="table-felt"><span class="felt-emblem">♣</span></div></div>
+        <div class="opponents">
+          <article v-for="(player,i) in opponents" :key="player.id" class="seat" :data-player="player.id">
+            <span class="seat-name"><span class="avatar">{{i%2?'♦':'♣'}}</span>{{player.id}}</span>
+            <div class="seat-cards"><playing-card v-for="n in handCount" :key="n" :card="null"></playing-card></div>
+            <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
+            <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
+          </article>
+          <article v-for="n in (state.phase==='WAITING'?Math.max(0,3-opponents.length):0)" :key="'empty'+n" class="seat empty-seat" aria-hidden="true">＋<small>空位</small></article>
+        </div>
+        <section v-if="isResult" class="settlement-order" :style="{'--order-columns':sortedFinalHands.map(()=>'minmax(0,1fr)').join(' 36px ')}" aria-label="最终选币顺序，从大号硬币到一号硬币">
+          <div class="order-heading"><span>最终选币顺序</span><span>牌力应由弱到强 <i aria-hidden="true">→</i></span></div>
+          <div class="order-line">
+            <ol class="order-players">
+              <li v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :style="{gridColumn:2*i+1}" :class="{current:activeSettlementPlayers.includes(entry.playerId)}">
+                <img :src="coinImage(entry.coin)" :alt="`硬币 ${entry.coin}`"><span class="order-player-name" :title="entry.playerId">{{entry.playerId}}<small v-if="entry.playerId===playerId">我</small></span>
+              </li>
+            </ol>
+            <nav class="comparison-trail" aria-label="相邻比较记录">
+              <button v-for="step in comparisonSteps" :key="step.index" class="comparison-marker" :style="{gridColumn:2*step.index+2}" :class="{active:step.active,complete:step.completed,failed:step.completed&&!step.passed,inspected:inspectedComparison?.index===step.index}" :disabled="!step.completed" :aria-label="`硬币${step.higherCoin}与${step.lowerCoin}：${step.completed?(step.passed?'通过，查看详情':'失败，查看详情'):'等待比较'}`" :aria-expanded="inspectedComparison?.index===step.index" :aria-describedby="inspectedComparison?.index===step.index?'comparison-detail':undefined" @mouseenter="hoverComparison(step.index)" @mouseleave="leaveComparisonDetail" @focus="comparisonFocus=step.index" @blur="comparisonFocus=null" @click="toggleComparisonDetail(step.index)">
+                <span class="marker-verdict" :key="step.completed?'done':'pending'" aria-hidden="true">{{step.completed?(step.passed?'✓':'×'):step.active?'⋯':'○'}}</span>
+              </button>
+            </nav>
+          </div>
+        </section>
+        <section v-if="state.phase==='WAITING'" class="lobby-center">
+          <h2>等待玩家</h2>
+          <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span></div>
+          <button v-if="isHost" class="gold-button" :disabled="state.players.length<2||pending||!connected" @click="command('START_GAME')">开始游戏 <span aria-hidden="true">▷</span></button>
+          <p v-else>等待房主开始</p><p>{{state.players.length}} / 5 已入座 · 房间号 {{roomId}}</p>
+        </section>
+        <template v-else>
+          <div class="deck" aria-hidden="true"><img :src="cardBack" alt=""></div>
+          <div class="board" :class="{deal:presentation==='deal'}" aria-label="公共牌区"><playing-card v-for="(card,i) in communitySlots" :key="i" :card="card" :style="{'--order':i+handCount}"></playing-card></div>
+          <nav class="phase-track" aria-label="牌局进度"><span v-for="(phase,i) in phases" :key="phase" class="phase-dot" :class="{active:phaseIndex===i,done:phaseIndex>i}" :title="phase" :aria-label="phase+(phaseIndex===i?'，当前阶段':'')"></span></nav>
+          <div class="coin-tray" data-public-anchor v-show="availableCoins.length" aria-label="公共硬币区"><button v-for="coin in availableCoins" :key="coin" class="coin-button" :data-live-coin="coin" :disabled="!canTakeCoin" :aria-label="`选择硬币 ${coin}`" @click="takeCoin(coin)"><img :src="coinImage(coin)" :alt="`硬币 ${coin}`"></button></div>
+          <div v-if="busy&&!isResult" class="phase-breath" role="status">{{presentation==='deal'?'♠  ♥  ♣  ♦':'· · ·'}}</div>
+        </template>
+        <div v-if="role==='PLAYER'" class="self-zone">
+          <div class="self-hand" :class="{deal:presentation==='deal'}"><playing-card v-for="(card,i) in (state.ownHoleCards.length?state.ownHoleCards:Array(handCount).fill(null))" :key="i" :card="card" :style="{'--order':i}"></playing-card><span class="self-name">{{playerId}}</span>
+            <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text">{{state.ownEstimatedHand.categoryName}}</span></button>
+          </div>
+          <div class="own-tray"><div class="own-coin-slot" :data-owner-anchor="playerId"><button v-if="myCoin" class="coin-button" :data-live-coin="myCoin" :disabled="!canAct" :aria-label="`归还硬币 ${myCoin}`" @click="returnCoin(myCoin)"><img :src="coinImage(myCoin)" :alt="`硬币 ${myCoin}`"></button><span v-else class="coin-outline" aria-hidden="true"></span></div><div class="history-coins"><img v-for="(coin,i) in state.coinHistory" :key="i" :src="coinImage(coin)" :alt="`第${i+1}轮 硬币${coin}`"></div></div>
+        </div>
+        <div v-else class="spectating">◉ 观战席</div>
+        <div class="score-pips" :aria-label="`累计成功${displayedSuccessCount}次，失败${displayedFailureCount}次`"><div class="score-row win"><span v-for="n in 3" :class="{lit:n<=displayedSuccessCount}">✦</span></div><div class="score-row loss"><span v-for="n in 3" :class="{lit:n<=displayedFailureCount}">×</span></div></div>
+
+        <transition name="stage" mode="out-in">
+          <section v-if="presentation==='select'&&revealEntry" class="stage-center" key="selection" aria-label="最大牌组选择">
+            <h3><img :src="coinImage(revealEntry.coin)" style="width:30px;vertical-align:middle;margin-right:10px" alt="">{{revealEntry.playerId}}</h3>
+            <div class="selection-cards"><playing-card v-for="card in revealEntry.holeCards" :key="'h'+cardText(card)" :card="card" :class="{chosen:selectionLit&&isChosen(revealEntry,card),discarded:selectionLit&&!isChosen(revealEntry,card)}"></playing-card><span class="source-divider"></span><playing-card v-for="card in state.communityCards" :key="'b'+cardText(card)" :card="card" :class="{chosen:selectionLit&&isChosen(revealEntry,card),discarded:selectionLit&&!isChosen(revealEntry,card)}"></playing-card></div>
+            <span class="hand-label">{{selectionLit?revealEntry.hand.categoryName:'· · ·'}}</span><div class="stage-pips"><span v-for="(e,i) in sortedFinalHands" :key="e.playerId" :class="{on:i<=revealIndex}"></span></div>
+          </section>
+          <section v-else-if="presentation==='compare'&&comparison" class="stage-center" :key="'compare'+compareIndex" aria-label="相邻牌组比较">
+            <div class="comparison-row"><article v-for="(entry,i) in compareEntries" :key="entry.playerId" class="comparison-side"><div v-if="i===1" class="compare-symbol" style="position:absolute;left:calc(50% - 20px);top:112px">{{verdictVisible?comparisonSymbol:'⋯'}}</div><div class="comparison-name"><img :src="coinImage(entry.coin)" :alt="`硬币${entry.coin}`"><span>{{entry.playerId}}</span></div><div class="five-cards"><playing-card v-for="card in entry.hand.cards" :key="cardText(card)" :card="card"></playing-card></div><div class="hand-label">{{entry.hand.categoryName}}</div></article></div>
+            <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div>
+          </section>
+          <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
+            <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button><button class="text-button" @click="replayReveal">↻ 重看比较</button></div></div>
+            <div class="summary-right"><div class="summary-tabs"><button v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :class="{active:summaryIndex===i}" :aria-label="`查看 ${entry.playerId} 的最大牌组`" @click="summaryIndex=i"><img :src="coinImage(entry.coin)" alt=""></button></div><div v-if="summaryEntry"><div class="summary-name">{{summaryEntry.playerId}}</div><div class="five-cards"><playing-card v-for="card in summaryEntry.hand.cards" :key="cardText(card)" :card="card"></playing-card></div><div class="hand-label">{{summaryEntry.hand.categoryName}}</div></div><p class="record-help">悬停或点击上方比较标记，查看详细结果</p></div>
+          </section>
+        </transition>
+        <transition name="fade">
+          <aside v-if="inspectedComparison&&comparisonDetail" id="comparison-detail" class="comparison-detail" role="tooltip" aria-label="比较详情" @mouseenter="keepComparisonDetail" @mouseleave="leaveComparisonDetail" @keydown.esc.stop.prevent="closeComparisonDetail">
+            <button class="detail-close" aria-label="关闭比较详情" @click="closeComparisonDetail">×</button>
+            <div class="detail-heading"><span>硬币 {{inspectedComparison.higherCoin}} → {{inspectedComparison.lowerCoin}}</span><strong :class="{failed:!inspectedComparison.passed}">{{comparisonDetail.verdict}}</strong></div>
+            <div class="detail-hands"><article v-for="(entry,i) in [comparisonDetail.left,comparisonDetail.right]" :key="i" class="detail-hand"><div class="detail-player"><img :src="coinImage(entry.coin)" :alt="`硬币 ${entry.coin}`"><span>{{entry.playerId}}</span><strong>{{entry.hand.categoryName}}</strong></div><div class="five-cards"><playing-card v-for="card in entry.hand.cards" :key="cardText(card)" :card="card"></playing-card></div></article><span class="detail-symbol" aria-hidden="true">{{comparisonDetail.symbol}}</span></div>
+            <p class="detail-reason">{{comparisonDetail.reason}}</p>
+          </aside>
+        </transition>
+      </div>
+    </main>
+
+    <transition name="fade">
+      <div v-if="panel" class="modal-shade" @click.self="closePanel" @keydown.esc="closePanel">
+        <section class="modal" :class="{'rules-modal':panel==='rules'}" role="dialog" aria-modal="true" :aria-label="panelTitle" @keydown="ruleKey">
+          <button class="icon-button modal-close" @click="closePanel" aria-label="关闭">×</button>
+          <template v-if="panel==='create'||panel==='join'">
+            <h2>{{panel==='create'?'创建房间':'加入房间'}}</h2>
+            <form @submit.prevent="panel==='create'?createRoom():joinRoom()">
+              <label class="field">昵称<input v-model.trim="name" maxlength="24" required autocomplete="nickname" placeholder="输入昵称"></label>
+              <template v-if="panel==='create'"><div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div><label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label><label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label></template>
+              <template v-else><label class="field">房间号<input v-model.trim="joinCode" class="room-code-input" required maxlength="6" pattern="[a-fA-F0-9]{6}" placeholder="六位房间号" autocomplete="off"></label><label class="field">入座方式<select v-model="joinRole"><option value="PLAYER">一起游戏</option><option value="SPECTATOR">旁观这场牌局</option></select></label></template>
+              <button class="gold-button wide" type="submit" :disabled="pending">{{pending?'连接中…':panel==='create'?'创建':'加入'}} <span>↗</span></button><p class="fine">{{panel==='create'?'分享房间号即可邀请玩家；选币不限时。':'输入房间号和昵称即可加入。'}}</p>
+            </form>
+          </template>
+          <template v-else-if="panel==='settings'"><h2>游戏设置</h2><label class="setting-row"><span>桌面音效<small>硬币与翻牌音效</small></span><input type="checkbox" class="toggle" v-model="prefs.sound" @change="previewSound" aria-label="桌面音效"></label><label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label><label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label><button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button><p class="fine">设置自动保存在此浏览器。</p></template>
+          <template v-else-if="panel==='rules'">
+            <header class="rules-header"><span class="eyebrow">玩法手册</span><h2>{{rulePages[ruleStep].title}}</h2></header>
+            <nav class="rules-contents" aria-label="规则目录"><button v-for="(page,i) in rulePages" :key="i" :class="{active:ruleStep===i}" :aria-current="ruleStep===i?'page':undefined" :aria-label="`第${i+1}页：${page.title}`" @click="goRulePage(i)">{{i+1}} {{page.topic}}</button></nav>
+            <div class="rule-body" tabindex="0" aria-label="规则正文">
+              <p class="rule-intro">{{rulePages[ruleStep].intro}}</p>
+              <table v-if="rulePages[ruleStep].table" class="rules-table"><thead><tr><th v-for="heading in rulePages[ruleStep].table.head" :key="heading" scope="col">{{heading}}</th></tr></thead><tbody><tr v-for="(row,i) in rulePages[ruleStep].table.rows" :key="i"><td v-for="(cell,j) in row" :key="j">{{cell}}</td></tr></tbody></table>
+              <div v-if="rulePages[ruleStep].example" class="rules-example" aria-label="正确顺序示例"><template v-for="(coin,i) in [3,2,1]" :key="coin"><span v-if="i" aria-hidden="true">≤</span><figure><img :src="coinImage(coin)" :alt="`硬币${coin}`"><figcaption>{{['高牌','一对','两对'][i]}}</figcaption></figure></template></div>
+              <ul class="rules-points"><li v-for="item in rulePages[ruleStep].items" :key="item">{{item}}</li></ul>
+              <p class="rule-note">{{rulePages[ruleStep].note}}</p>
+            </div>
+            <nav class="rules-pagination" aria-label="规则翻页"><button class="rule-page-button" :disabled="ruleStep===0" @click="goRulePage(ruleStep-1)">← 上一页</button><span class="rule-page-count" aria-live="polite">{{ruleStep+1}} / {{rulePages.length}}</span><button class="rule-page-button" :disabled="ruleStep===rulePages.length-1" @click="goRulePage(ruleStep+1)">下一页 →</button></nav>
+          </template>
+          <template v-else-if="panel==='leave'"><h2>离开房间？</h2><p>{{role==='PLAYER'&&state.phase!=='WAITING'?'离开会结束当前房间，所有人返回主菜单。':'你将返回主菜单。'}}</p><button class="gold-button wide" @click="leaveRoom">返回主菜单</button><button class="text-button wide" @click="closePanel">继续游戏</button></template>
+        </section>
+      </div>
+    </transition>
+    <transition name="fade"><div v-if="notice" class="toast" :class="{error:noticeError}" role="status">{{notice}}</div></transition>
+  </div>
+</div>
+<script src="/vendor/vue.global.prod.js"></script>
+<script src="/tabletop-art.js?v=20260930a"></script>
+<script src="/settlement-details.js?v=20261003a"></script>
+<script src="/game-client.js?v=20261003c"></script>
+</body>
+</html>
