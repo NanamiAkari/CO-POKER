@@ -45,7 +45,8 @@ jobs:
         run: |
           release_id="${RELEASE_TAG}-${GITHUB_SHA::12}"
           mkdir -p release
-          cp -a public src package.json package-lock.json ecosystem.config.cjs deploy/install-release.sh release/
+          cp -a public src package.json package-lock.json ecosystem.config.cjs release/
+          cp -a deploy release/
           tar -czf "release-${release_id}.tar.gz" -C release public src package.json package-lock.json ecosystem.config.cjs deploy
           sha256sum "release-${release_id}.tar.gz" > "release-${release_id}.sha256"
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
