@@ -29,6 +29,8 @@ class GameRoom {
     this.spectatorSlots = spectatorSlots;
     this.spectators = new Set();
     this.rematchConfirmed = new Set();
+    this.comparisonSkipVotes = new Set();
+    this.comparisonSkip = false;
     this.replayEvents = [];
     this.eventSequence = 0;
     this.random = random;
@@ -39,6 +41,8 @@ class GameRoom {
     this.successCount = 0;
     this.failureCount = 0;
     this.lastResult = null;
+    this.comparisonSkipVotes.clear();
+    this.comparisonSkip = false;
     this.closed = false;
   }
 
@@ -60,6 +64,8 @@ class GameRoom {
     this.coinTable = new CoinTable(this.players.map(player => player.id));
     this.phase = PHASES.ROUND_1_COINS;
     this.lastResult = null;
+    this.comparisonSkipVotes.clear();
+    this.comparisonSkip = false;
     this.rematchConfirmed.clear();
     this.record('GAME_STARTED');
   }
@@ -84,6 +90,8 @@ class GameRoom {
     this.historyVisibility = next.historyVisibility;
     this.spectatorSlots = next.spectatorSlots;
     this.rematchConfirmed.clear();
+    this.comparisonSkipVotes.clear();
+    this.comparisonSkip = false;
     this.record('ROOM_OPTIONS_UPDATED', { options: next });
     return next;
   }
@@ -146,6 +154,8 @@ class GameRoom {
 
   settle() {
     if (this.phase !== PHASES.FINAL_REVEAL) throw new Error('Final reveal is not ready');
+    this.comparisonSkipVotes.clear();
+    this.comparisonSkip = false;
     const ordered = [...this.players].sort((a, b) => b.currentCoin - a.currentCoin);
     const comparisons = [];
     let success = true;
@@ -163,6 +173,17 @@ class GameRoom {
     this.phase = (this.successCount >= 3 || this.failureCount >= 3) ? PHASES.GAME_OVER : PHASES.SETTLEMENT;
     this.record('GAME_SETTLED', this.lastResult);
     return this.lastResult;
+  }
+
+  requestComparisonSkip(playerId) {
+    if (![PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(this.phase) || !this.lastResult) throw new Error('Comparison skip is unavailable');
+    if (!this.players.some(player => player.id === playerId)) throw new Error('Unknown player');
+    if (this.comparisonSkip) return true;
+    if (this.comparisonSkipVotes.has(playerId)) return false;
+    this.comparisonSkipVotes.add(playerId);
+    if (this.comparisonSkipVotes.size === this.players.length) this.comparisonSkip = true;
+    this.record('COMPARISON_SKIP_VOTE', { playerId, votes: [...this.comparisonSkipVotes], completed: this.comparisonSkip });
+    return this.comparisonSkip;
   }
 
   addSpectator(id) {

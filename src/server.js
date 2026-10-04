@@ -74,6 +74,8 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     phase: room.game?.phase || PHASES.WAITING,
     successCount: room.game?.successCount || 0, failureCount: room.game?.failureCount || 0,
     rematchConfirmed: room.game ? [...room.game.rematchConfirmed] : [],
+    comparisonSkip: room.game?.comparisonSkip || false,
+    comparisonSkipVotes: room.game ? [...room.game.comparisonSkipVotes] : [],
     players: room.game ? room.game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin })) : [...room.clients.values()].filter(c => c.role === 'PLAYER').map(c => ({ id: c.id, currentCoin: null, coinHistory: [] })),
     spectators: room.spectators
   });
@@ -188,6 +190,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
         }
         else if (msg.type === 'SETTLE') room.game.settle();
         else if (msg.type === 'REMATCH') room.game.confirmRematch(ws.id);
+        else if (msg.type === 'SKIP_COMPARISON') room.game.requestComparisonSkip(ws.id);
         else if (msg.type === 'END_GAME') { room.game.endGame(); return closeRoom(room, 'GAME_ENDED'); }
         else throw new Error('Unknown message type');
         broadcast(room, 'ROOM_STATE', coinAction ? { coinAction } : {});

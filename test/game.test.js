@@ -106,6 +106,30 @@ test('rejects invalid room option updates without mutating game settings', () =>
   }
 });
 
+test('comparison skip requires every player and resets for the next round', () => {
+  const room = new GameRoom({ players: ['a', 'b'] });
+  assert.throws(() => room.requestComparisonSkip('a'), /unavailable/);
+  room.phase = PHASES.SETTLEMENT;
+  room.lastResult = { success: true, comparisons: [] };
+  assert.equal(room.requestComparisonSkip('a'), false);
+  assert.deepEqual([...room.comparisonSkipVotes], ['a']);
+  assert.equal(room.requestComparisonSkip('a'), false);
+  assert.deepEqual([...room.comparisonSkipVotes], ['a']);
+  assert.equal(room.requestComparisonSkip('b'), true);
+  assert.equal(room.comparisonSkip, true);
+  assert.equal(room.requestComparisonSkip('a'), true);
+  room.confirmRematch('a'); room.confirmRematch('b');
+  assert.equal(room.phase, PHASES.ROUND_1_COINS);
+  assert.equal(room.comparisonSkip, false);
+  assert.deepEqual([...room.comparisonSkipVotes], []);
+});
+
+test('comparison skip rejects unknown players', () => {
+  const room = new GameRoom({ players: ['a', 'b'] });
+  room.phase = PHASES.GAME_OVER; room.lastResult = { success: false, comparisons: [] };
+  assert.throws(() => room.requestComparisonSkip('spectator'), /Unknown player/);
+});
+
 test('history visibility hides both top-level and per-player histories', () => {
   for (const visibility of ['all', 'self', 'none']) {
     const room = new GameRoom({ players: ['a', 'b'], historyVisibility: visibility });
