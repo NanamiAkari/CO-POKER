@@ -102,7 +102,7 @@
     ];
     const cardKey=c=>`${c.rank}-${c.suit}`;
     const isChosen=(entry,card)=>entry.hand.cards.some(c=>cardKey(c)===cardKey(card));
-    const cardHighlight=(hand,card)=>hand&&card&&Highlights?Highlights.getHighlights(hand).find(item=>item.card.rank===card.rank&&item.card.suit===card.suit):null;
+    const cardHighlight=(hand,card)=>hand&&card&&Number.isInteger(hand.category)&&Highlights?Highlights.getHighlights(hand).find(item=>item.card.rank===card.rank&&item.card.suit===card.suit):null;
     const timings=()=>prefs.pace==='relaxed'?{select:3000,compare:5600,gap:1000,hold:1700}:{select:2300,compare:4300,gap:800,hold:1200};
     const skipRequested=ref(false), skipWaiters=new Set();
     const sleep=ms=>{if(skipRequested.value){skipRequested.value=false;return Promise.resolve();}return new Promise(resolve=>{let timer;const finish=()=>{skipWaiters.delete(finish);clearTimeout(timer);resolve();};skipWaiters.add(finish);timer=setTimeout(finish,ms);});};

@@ -8,6 +8,7 @@ const { compile } = require('@vue/compiler-dom');
 const { renderToString } = require('@vue/server-renderer');
 const Art = require('../public/tabletop-art');
 const SettlementDetails = require('../public/settlement-details');
+const HandHighlights = require('../public/hand-highlights');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -22,7 +23,7 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
     localStorage: { getItem: () => null, setItem() {} },
     ...timers, console
@@ -132,6 +133,15 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   assert.match(table, /disabled aria-label="选择硬币 2"/);
   assert.match(table, /aria-label="归还硬币 1"/);
   assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
+});
+
+test('own hand hint exposes the current maximum five-card combination and highlights it', async () => {
+  const hand={category:1,categoryName:'一对',tiebreak:[9,14,13,11],cards:[{rank:9,suit:'s'},{rank:9,suit:'h'},{rank:14,suit:'d'},{rank:13,suit:'c'},{rank:11,suit:'s'}]};
+  const table=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';
+    Object.assign(v.state,{phase:'ROUND_2_COINS',players:[{id:'A',currentCoin:null},{id:'B',currentCoin:null}],ownHoleCards:hand.cards.slice(0,2),ownEstimatedHand:hand});
+  });
+  assert.match(table,/查看当前最大牌型/);assert.match(table,/一对/);assert.equal((table.match(/highlight-pair/g)||[]).length,4);
 });
 
 test('result only renders a single stage with card images, never stacked result panels', async () => {

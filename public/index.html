@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/game.css?v=20260930b">
   <link rel="stylesheet" href="/rules.css?v=20260930b">
   <link rel="stylesheet" href="/settlement.css?v=20261003b">
+  <link rel="stylesheet" href="/hint-highlights.css?v=20261005b">
   <link rel="stylesheet" href="/hand-highlights.css?v=20261005a">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261004a">
 </head>
@@ -97,7 +98,7 @@
         </template>
         <div v-if="role==='PLAYER'" class="self-zone">
           <div class="self-hand" :class="{deal:presentation==='deal'}"><playing-card v-for="(card,i) in (state.ownHoleCards.length?state.ownHoleCards:Array(handCount).fill(null))" :key="i" :card="card" :highlight="cardHighlight(state.ownEstimatedHand,card)" :style="{'--order':i}"></playing-card><span class="self-name">{{playerId}}</span>
-            <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text">{{state.ownEstimatedHand.categoryName}}</span></button>
+            <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text"><strong>{{state.ownEstimatedHand.categoryName}}</strong><span class="hint-cards"><playing-card v-for="card in state.ownEstimatedHand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(state.ownEstimatedHand,card)"></playing-card></span></span></button>
           </div>
           <div class="own-tray"><div class="own-coin-slot" :data-owner-anchor="playerId"><button v-if="myCoin" class="coin-button" :data-live-coin="myCoin" :disabled="!canAct" :aria-label="`归还硬币 ${myCoin}`" @click="returnCoin(myCoin)"><img :src="coinImage(myCoin)" :alt="`硬币 ${myCoin}`"></button><span v-else class="coin-outline" aria-hidden="true"></span></div><div class="history-coins"><img v-for="(coin,i) in state.coinHistory" :key="i" :src="coinImage(coin)" :alt="`第${i+1}轮 硬币${coin}`"></div></div>
         </div>
