@@ -1,6 +1,13 @@
 /* Settlement occupies a stable middle band of the 1200 x 760 table. */
 .settlement-scene .opponents{visibility:hidden;pointer-events:none}
 .settlement-scene .board,.settlement-scene .deck,.settlement-scene .phase-track{opacity:.1;pointer-events:none}
+/* The review state restores the final table so players can inspect the
+   revealed community cards, hole cards and coin history without leaving the
+   result. */
+.settlement-scene.table-review .opponents{visibility:visible;pointer-events:auto}
+.settlement-scene.table-review .board,.settlement-scene.table-review .deck,.settlement-scene.table-review .phase-track{opacity:1;pointer-events:auto}
+.settlement-toggle{position:absolute;right:104px;top:205px;z-index:24;padding:9px 18px;border:1px solid #d7b566;border-radius:999px;background:#1d342c;color:#f2d58f;font-size:12px;letter-spacing:1px;box-shadow:0 8px 22px #0009;transition:transform .2s,background .2s}
+.settlement-toggle:hover{transform:translateY(-2px);background:#2c543e}
 .settlement-order{position:absolute;left:105px;right:105px;top:91px;height:110px;z-index:13;padding:12px 24px;background:linear-gradient(120deg,#19392fe8,#102b25e8);border:1px solid #b99b604f;border-radius:14px;box-shadow:0 8px 24px #0003}
 .order-heading{display:flex;align-items:center;justify-content:space-between;color:#a7b5a1;font-size:11px;letter-spacing:2px}
 .order-heading span:first-child{color:#d7c398}

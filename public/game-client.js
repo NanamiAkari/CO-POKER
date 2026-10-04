@@ -59,6 +59,10 @@
     function keepComparisonDetail(){clearTimeout(detailCloseTimer);}
     function leaveComparisonDetail(){clearTimeout(detailCloseTimer);detailCloseTimer=setTimeout(()=>{comparisonHover.value=null;},350);}
     function closeComparisonDetail(){clearTimeout(detailCloseTimer);comparisonHover.value=null;comparisonFocus.value=null;comparisonPinned.value=null;}
+    function showFinalTable(){if(!isResult.value)return;closeComparisonDetail();presentation.value='table';}
+    function showSettlementSummary(){if(!isResult.value)return;closeComparisonDetail();presentation.value='summary';}
+    function finalHandFor(id){return state.finalHands.find(entry=>entry.playerId===id)||null;}
+    function opponentHoleCard(id,index){return presentation.value==='table'?finalHandFor(id)?.holeCards?.[index]||null:null;}
     const historyLabel=computed(()=>({all:'历史公开',self:'历史仅自己可见',none:'隐藏历史'})[state.options?.historyVisibility]);
     const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',leave:'离开牌桌'})[panel.value]);
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];
@@ -200,7 +204,18 @@
         let msg;try{msg=JSON.parse(event.data);}catch{return;}
         if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
-        if(msg.state){if(msg.state.comparisonSkip){skipRequested.value=true;for(const finish of [...skipWaiters])finish();}if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});}
+        if(msg.state){
+          // Apply the all-player skip flag before the queued presentation runs.
+          // This releases an in-flight comparison immediately while leaving the
+          // preceding hand-selection animation intact.
+          if(msg.state.comparisonSkip){
+            state.comparisonSkip=true;
+            state.comparisonSkipVotes=msg.state.comparisonSkipVotes || state.comparisonSkipVotes;
+            skipRequested.value=true;
+            for(const finish of [...skipWaiters])finish();
+          }
+          if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
+        }
       };
       ws.onerror=()=>{unlock();notify('暂时连接不上牌桌，请稍后重试',true);};
       ws.onclose=()=>{if(serial!==socketSerial)return;connected.value=false;unlock();if(inRoom.value)notify('连接已断开，可从右上角返回主菜单',true);};
@@ -273,7 +288,7 @@
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
     onMounted(()=>{resize();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,displayedSuccessCount,displayedFailureCount,canSkipComparison,hasSkippedComparison,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,canSkipComparison,hasSkippedComparison,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...Art};
   }});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
   app.config.errorHandler=error=>{console.error(error);const boot=document.getElementById('boot-status');if(boot&&!boot.hidden)boot.textContent='牌桌未能加载，请刷新页面。';};

@@ -59,3 +59,13 @@ test('invalid hand input is rejected without broken highlight data', () => {
   assert.throws(() => getHighlights({ category: 1, cards: [c(2), c(2, 'h')] }), TypeError);
   assert.throws(() => getHighlights({ category: 1, cards: [c(2), c(2, 'h'), c(4), c(5), { rank: 20, suit: 's' }] }), TypeError);
 });
+
+test('selected cards use glow styles and two-pair groups have separate colours', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../public/hand-highlights.css'), 'utf8');
+  assert.doesNotMatch(css, /outline\s*:/, 'selected cards should not be boxed with outlines');
+  const high = css.match(/\.playing-card\.highlight-two-pair-high\{--glow-color:([^}]+)\}/)?.[1];
+  const low = css.match(/\.playing-card\.highlight-two-pair-low\{--glow-color:([^}]+)\}/)?.[1];
+  assert.ok(high && low, 'both two-pair glow classes should be defined');
+  assert.notEqual(high, low, 'the two pairs need visually distinct glow colours');
+  assert.match(css, /@keyframes hand-card-glow/);
+});

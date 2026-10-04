@@ -135,13 +135,18 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
 });
 
-test('own hand hint exposes the current maximum five-card combination and highlights it', async () => {
+test('own hand hint stays behind the exclamation hover and does not highlight the hand', async () => {
   const hand={category:1,categoryName:'一对',tiebreak:[9,14,13,11],cards:[{rank:9,suit:'s'},{rank:9,suit:'h'},{rank:14,suit:'d'},{rank:13,suit:'c'},{rank:11,suit:'s'}]};
   const table=await renderScreen(v=>{
     v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';
     Object.assign(v.state,{phase:'ROUND_2_COINS',players:[{id:'A',currentCoin:null},{id:'B',currentCoin:null}],ownHoleCards:hand.cards.slice(0,2),ownEstimatedHand:hand});
   });
-  assert.match(table,/查看当前最大牌型/);assert.match(table,/一对/);assert.equal((table.match(/highlight-pair/g)||[]).length,4);
+  assert.match(table,/查看当前最大牌型/);assert.match(table,/一对/);
+  // The player's cards stay visually neutral during play. Highlighting is
+  // reserved for the cards inside the hint popup shown on hover/focus.
+  assert.equal((table.match(/highlight-pair/g)||[]).length,2);
+  assert.match(table,/class="hint"/);
+  assert.match(table,/class="hint-text"/);
 });
 
 test('result only renders a single stage with card images, never stacked result panels', async () => {
@@ -198,6 +203,36 @@ test('five-player settlement retains the full order and completed verdicts, with
   assert.equal((final.match(/class="comparison-marker complete/g)||[]).length,4);
 });
 
+test('settlement can hide the result to inspect the final table and restore it', async () => {
+  let view;
+  const fixture = fivePlayerResult();
+  fixture.ownHoleCards = fixture.finalHands.find(entry => entry.playerId === '丙').holeCards.slice();
+  const table = await renderScreen(v => {
+    view = v;
+    v.inRoom.value = true;
+    v.playerId.value = '丙';
+    v.presentation.value = 'table';
+    Object.assign(v.state, fixture);
+  });
+  const summary = await renderScreen(v => {
+    v.inRoom.value = true;
+    v.playerId.value = '丙';
+    v.presentation.value = 'summary';
+    Object.assign(v.state, fixture);
+  });
+  assert.match(summary, /隐藏结算/);
+  assert.match(summary, /aria-label="本局结算"/);
+  assert.match(table, /settlement-scene table-review/);
+  assert.match(table, /aria-label="查看结算"/);
+  assert.doesNotMatch(table, /最终选币顺序/);
+  assert.match(table, /aria-label="A♥/);
+  assert.match(table, /class="self-zone"/);
+  view.showSettlementSummary();
+  assert.equal(view.presentation.value, 'summary');
+  view.showFinalTable();
+  assert.equal(view.presentation.value, 'table');
+});
+
 test('comparison playback completes every pair after a failure, then unlocks the summary; replay resets review state', async () => {
   let view,now=0,id=0;
   const scheduled=new Map();
@@ -222,6 +257,33 @@ test('comparison playback completes every pair after a failure, then unlocks the
   assert.equal(view.displayedFailureCount.value,1);
 });
 
+test('all-player comparison skip jumps to summary after selection playback', async () => {
+  let view, now = 0, id = 0;
+  const scheduled = new Map();
+  const timers = {
+    setTimeout(fn, ms) { const key = ++id; scheduled.set(key, {at: now + ms, fn}); return key; },
+    clearTimeout(key) { scheduled.delete(key); }
+  };
+  await renderScreen(v => {
+    view = v;
+    v.inRoom.value = true;
+    v.presentation.value = 'summary';
+    Object.assign(v.state, {...fivePlayerResult(), comparisonSkip: true});
+  }, timers);
+  const playback = view.replayReveal();
+  for (let guard = 0; guard < 100 && view.presentation.value !== 'summary'; guard++) {
+    const next = [...scheduled].sort((a, b) => a[1].at - b[1].at)[0];
+    assert.ok(next, 'selection playback must schedule its next step');
+    scheduled.delete(next[0]);
+    now = next[1].at;
+    next[1].fn();
+    for (let n = 0; n < 5; n++) await Promise.resolve();
+  }
+  await playback;
+  assert.equal(view.presentation.value, 'summary');
+  assert.equal(view.completedComparisonCount.value, view.state.result.comparisons.length);
+});
+
 test('two to five players show one icon-only review marker between each adjacent pair', async () => {
   for (let count=2;count<=5;count++) {
     const output=await renderScreen(v=>{
@@ -244,9 +306,9 @@ test('two to five players show one icon-only review marker between each adjacent
 test('skip comparison control appears only during comparison and requires all-player state', async () => {
   const base={phase:'SETTLEMENT',players:[{id:'A',currentCoin:2},{id:'B',currentCoin:1}],result:{success:false,comparisons:[{higherCoin:2,lowerCoin:1,higherPlayerId:'A',lowerPlayerId:'B',passed:false,comparison:1}]},finalHands:[]};
   const compare=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,base);});
-  assert.match(compare,/跳过比较/);assert.match(compare,/0\/2/);
+  assert.match(compare,/跳过全部比较/);assert.match(compare,/0\/2/);
   const voted=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,{...base,comparisonSkipVotes:['A']});});
   assert.match(voted,/等待其他玩家/);assert.match(voted,/1\/2/);
   const select=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='select';Object.assign(v.state,base);});
-  assert.doesNotMatch(select,/跳过比较/);
+  assert.doesNotMatch(select,/跳过(?:全部)?比较/);
 });
