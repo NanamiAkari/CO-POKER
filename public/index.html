@@ -51,6 +51,7 @@
           <div class="table-tools">
             <button class="icon-button" @click="openPanel('rules')" aria-label="玩法手册" title="规则">?</button>
             <button class="icon-button" @click="openPanel('settings')" aria-label="游戏设置" title="设置">⚙</button>
+            <button v-if="isHost&&state.phase==='GAME_OVER'" class="icon-button" @click="prepareRoomSettings" aria-label="下一场规则" title="设置下一场规则">☷</button>
             <button class="icon-button" @click="requestLeave" aria-label="返回主菜单" title="离开牌桌">⌂</button>
           </div>
         </header>
@@ -141,6 +142,7 @@
             </form>
           </template>
           <template v-else-if="panel==='settings'"><h2>游戏设置</h2><label class="setting-row"><span>桌面音效<small>硬币与翻牌音效</small></span><input type="checkbox" class="toggle" v-model="prefs.sound" @change="previewSound" aria-label="桌面音效"></label><label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label><label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label><button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button><p class="fine">设置自动保存在此浏览器。</p></template>
+          <template v-else-if="panel==='room-settings'"><h2>下一场规则</h2><p class="fine">本大轮已结束。修改后，所有玩家需要重新确认下一场。</p><div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div><label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label><label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label><button class="gold-button wide" :disabled="pending||!isHost||state.phase!=='GAME_OVER'" @click="saveRoomSettings">保存下一场规则 ↗</button></template>
           <template v-else-if="panel==='rules'">
             <header class="rules-header"><span class="eyebrow">玩法手册</span><h2>{{rulePages[ruleStep].title}}</h2></header>
             <nav class="rules-contents" aria-label="规则目录"><button v-for="(page,i) in rulePages" :key="i" :class="{active:ruleStep===i}" :aria-current="ruleStep===i?'page':undefined" :aria-label="`第${i+1}页：${page.title}`" @click="goRulePage(i)">{{i+1}} {{page.topic}}</button></nav>

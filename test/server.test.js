@@ -191,6 +191,33 @@ test('four rounds, immutable settlement, rematch votes, and END_GAME close the f
   await r.host.request({type:'CREATE_ROOM',playerId:'a'}, 'ROOM_CREATED');
 });
 
+test('only the host can update validated room options after GAME_OVER', async t => {
+  const f = await fixture(t); const r = await f.room({spectatorSlots:2});
+  const game = f.server.manager.get(r.roomId).game = new (require('../src/game').GameRoom)({players:['a','b'], spectatorSlots:2});
+  game.phase = 'GAME_OVER'; game.rematchConfirmed.add('a');
+  const denied = await r.guest.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
+  assert.match(denied.message, /Only host/);
+  const updated = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',spectatorSlots:4}}, 'ROOM_OPTIONS_UPDATED');
+  await r.guest.next('ROOM_OPTIONS_UPDATED');
+  assert.deepEqual(updated.state.options, {handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',spectatorSlots:4});
+  assert.equal(updated.state.successCount, 0); assert.equal(updated.state.failureCount, 0);
+  assert.deepEqual(updated.state.rematchConfirmed, []);
+  assert.equal(f.server.manager.get(r.roomId).game.handCardCount, 3);
+});
+
+test('room option updates reject active phases, cross-room requests, and spectator overflow', async t => {
+  const f = await fixture(t); const r = await f.room({spectatorSlots:1});
+  const active = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
+  assert.match(active.message, /after game over/);
+  const outsider = await f.connect(); await outsider.request({type:'CREATE_ROOM',playerId:'outsider'}, 'ROOM_CREATED');
+  const cross = await outsider.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
+  assert.match(cross.message, /Not a member/);
+  const room = f.server.manager.get(r.roomId); room.game = new (require('../src/game').GameRoom)({players:['a','b'], spectatorSlots:1}); room.game.phase = 'GAME_OVER';
+  room.spectators.push('watcher');
+  const overflow = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{spectatorSlots:0}}, 'ERROR');
+  assert.match(overflow.message, /Spectator positions are full/);
+});
+
 test('protocol heartbeat keeps an idle client alive without game actions', {timeout: 3000}, async t => {
   const f = await fixture(t, {heartbeatIntervalMs: 40});
   const client = await f.connect();

@@ -156,6 +156,15 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           room.game.start();
           return broadcast(room, 'GAME_STARTED');
         }
+        if (msg.type === 'UPDATE_ROOM_OPTIONS') {
+          if (ws.id !== room.hostId || ws.role !== 'PLAYER') throw new Error('Only host can update room options');
+          if (!room.game || room.game.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
+          const requested = validateOptions({ ...room.options, ...(msg.options || {}) });
+          if (room.spectators.length > requested.spectatorSlots) throw new Error('Spectator positions are full');
+          room.game.updateOptions(requested);
+          room.options = requested;
+          return broadcast(room, 'ROOM_OPTIONS_UPDATED');
+        }
         if (msg.type === 'GET_REPLAY') {
           const visibility = room.options.historyVisibility;
           const events = (room.game?.getReplay() || []).flatMap(event => {

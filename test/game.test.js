@@ -81,6 +81,31 @@ test('ordinary rematch preserves counters and requires each player confirmation'
   assert.equal(room.rematchConfirmed.size, 0);
 });
 
+test('updates room options only after GAME_OVER and clears rematch votes', () => {
+  const room = new GameRoom({ players: ['a', 'b'], spectatorSlots: 2 });
+  assert.throws(() => room.updateOptions({ handCardCount: 3 }), /after game over/);
+  room.phase = PHASES.GAME_OVER;
+  room.rematchConfirmed.add('a');
+  const updated = room.updateOptions({ handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });
+  assert.deepEqual(updated, { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });
+  assert.equal(room.handCardCount, 3);
+  assert.equal(room.handUsageRule, 'all-hole');
+  assert.equal(room.historyVisibility, 'self');
+  assert.equal(room.spectatorSlots, 5);
+  assert.deepEqual([...room.rematchConfirmed], []);
+  assert.ok(room.getReplay().some(event => event.type === 'ROOM_OPTIONS_UPDATED'));
+});
+
+test('rejects invalid room option updates without mutating game settings', () => {
+  const room = new GameRoom({ players: ['a', 'b'] });
+  room.phase = PHASES.GAME_OVER;
+  const before = [room.handCardCount, room.handUsageRule, room.historyVisibility, room.spectatorSlots];
+  for (const options of [{handCardCount: 4}, {handUsageRule: 'bad'}, {historyVisibility: 'bad'}, {spectatorSlots: 9}, {unknown: true}]) {
+    assert.throws(() => room.updateOptions(options));
+    assert.deepEqual([room.handCardCount, room.handUsageRule, room.historyVisibility, room.spectatorSlots], before);
+  }
+});
+
 test('history visibility hides both top-level and per-player histories', () => {
   for (const visibility of ['all', 'self', 'none']) {
     const room = new GameRoom({ players: ['a', 'b'], historyVisibility: visibility });

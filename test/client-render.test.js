@@ -53,6 +53,18 @@ test('actual Vue menu and settings templates render without missing bindings', a
   assert.match(settings, /演出节奏/);
 });
 
+test('host can render the post-round room rules panel', async () => {
+  const view = await renderScreen(v => {
+    v.inRoom.value = true;
+    v.playerId.value = 'host';
+    v.panel.value = 'room-settings';
+    Object.assign(v.state, {phase:'GAME_OVER',hostId:'host',options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2}});
+  });
+  assert.match(view, /下一场规则/);
+  assert.match(view, /修改后，所有玩家需要重新确认下一场/);
+  assert.match(view, /保存下一场规则/);
+});
+
 test('copying a room works on HTTP, restores focus, and reports unsupported clipboard honestly', async () => {
   for(const outcome of [true,false,'throw']){
     let view,field,selected,removed=false,restored=false;

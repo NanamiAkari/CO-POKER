@@ -64,6 +64,30 @@ class GameRoom {
     this.record('GAME_STARTED');
   }
 
+  updateOptions(options = {}) {
+    if (this.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
+    if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid room options');
+    const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'spectatorSlots']);
+    for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unknown room option: ${key}`);
+    const next = {
+      handCardCount: options.handCardCount ?? this.handCardCount,
+      handUsageRule: options.handUsageRule ?? this.handUsageRule,
+      historyVisibility: options.historyVisibility ?? this.historyVisibility,
+      spectatorSlots: options.spectatorSlots ?? this.spectatorSlots
+    };
+    if (![2, 3].includes(next.handCardCount)) throw new Error('handCardCount must be 2 or 3');
+    if (!['any', 'all-hole'].includes(next.handUsageRule)) throw new Error('Invalid handUsageRule');
+    if (!['all', 'self', 'none'].includes(next.historyVisibility)) throw new Error('Invalid historyVisibility');
+    if (!Number.isInteger(next.spectatorSlots) || next.spectatorSlots < 0 || next.spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
+    this.handCardCount = next.handCardCount;
+    this.handUsageRule = next.handUsageRule;
+    this.historyVisibility = next.historyVisibility;
+    this.spectatorSlots = next.spectatorSlots;
+    this.rematchConfirmed.clear();
+    this.record('ROOM_OPTIONS_UPDATED', { options: next });
+    return next;
+  }
+
   moveCoin(coin, toPlayer, fromPlayer = null) {
     if (![PHASES.ROUND_1_COINS, PHASES.ROUND_2_COINS, PHASES.ROUND_3_COINS, PHASES.ROUND_4_COINS].includes(this.phase)) throw new Error('Coin selection is closed');
     const target = this.players.find(player => player.id === toPlayer);
