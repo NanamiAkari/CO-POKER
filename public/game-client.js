@@ -4,7 +4,7 @@
   const { createApp, ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } = Vue;
   const Art = window.TabletopArt;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
-  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all'},successCount:0,failureCount:0,rematchConfirmed:[]});
+  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all'},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
   const saved = (() => { try { return JSON.parse(localStorage.getItem('poker.preferences.v2') || '{}'); } catch { return {}; } })();
   const app = createApp({setup() {
     const inRoom=ref(false), panel=ref(null), ruleStep=ref(0), roomId=ref(''), playerId=ref(''), role=ref('PLAYER');
@@ -27,6 +27,8 @@
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!pending.value&&!busy.value&&COIN_PHASES.includes(state.phase));
     const canTakeCoin=computed(()=>canAct.value&&myCoin.value===null);
+    const canSkipComparison=computed(()=>role.value==='PLAYER'&&presentation.value==='compare'&&Boolean(state.result)&&!state.comparisonSkip);
+    const hasSkippedComparison=computed(()=>state.comparisonSkipVotes.includes(playerId.value));
     const confirmed=computed(()=>state.rematchConfirmed.includes(playerId.value));
     const communitySlots=computed(()=>Array.from({length:5},(_,i)=>state.communityCards[i] || null));
     const phases=['发牌','翻牌','转牌','河牌','揭示'];
@@ -100,7 +102,8 @@
     const cardKey=c=>`${c.rank}-${c.suit}`;
     const isChosen=(entry,card)=>entry.hand.cards.some(c=>cardKey(c)===cardKey(card));
     const timings=()=>prefs.pace==='relaxed'?{select:3000,compare:5600,gap:1000,hold:1700}:{select:2300,compare:4300,gap:800,hold:1200};
-    const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+    const skipRequested=ref(false), skipWaiters=new Set();
+    const sleep=ms=>{if(skipRequested.value){skipRequested.value=false;return Promise.resolve();}return new Promise(resolve=>{let timer;const finish=()=>{skipWaiters.delete(finish);clearTimeout(timer);resolve();};skipWaiters.add(finish);timer=setTimeout(finish,ms);});};
     const live=epoch=>epoch===generation && inRoom.value;
     function notify(text,error=false){clearTimeout(noticeTimer);notice.value=text;noticeError.value=error;noticeTimer=setTimeout(()=>notice.value='',5000);}
     function unlock(){pending.value=false;clearTimeout(pendingTimer);}
@@ -195,7 +198,7 @@
         let msg;try{msg=JSON.parse(event.data);}catch{return;}
         if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
-        if(msg.state){if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});}
+        if(msg.state){if(msg.state.comparisonSkip){skipRequested.value=true;for(const finish of [...skipWaiters])finish();}if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});}
       };
       ws.onerror=()=>{unlock();notify('暂时连接不上牌桌，请稍后重试',true);};
       ws.onclose=()=>{if(serial!==socketSerial)return;connected.value=false;unlock();if(inRoom.value)notify('连接已断开，可从右上角返回主菜单',true);};
@@ -255,7 +258,9 @@
         presentation.value='gap';await sleep(500);if(!live(epoch))return;
       }
       for(let i=0;i<(state.result?.comparisons.length || 0);i++){
+        if(state.comparisonSkip){completedComparisonCount.value=state.result.comparisons.length;presentation.value='summary';break;}
         compareIndex.value=i;verdictVisible.value=false;presentation.value='compare';await sleep(1700);if(!live(epoch))return;
+        if(state.comparisonSkip){completedComparisonCount.value=state.result.comparisons.length;presentation.value='summary';break;}
         verdictVisible.value=true;tone(comparison.value.passed?'win':'card');await sleep(timings().compare-1700);if(!live(epoch))return;
         completedComparisonCount.value=i+1;
         presentation.value='gap';await sleep(timings().gap);if(!live(epoch))return;
@@ -266,7 +271,7 @@
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
     onMounted(()=>{resize();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-    return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,displayedSuccessCount,displayedFailureCount,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,displayedSuccessCount,displayedFailureCount,canSkipComparison,hasSkippedComparison,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,...Art};
   }});
   app.component('playing-card',{props:['card'],template:`<span class="playing-card" :class="{'is-face':!!card}" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup:()=>({art:Art})});
   app.config.errorHandler=error=>{console.error(error);const boot=document.getElementById('boot-status');if(boot&&!boot.hidden)boot.textContent='牌桌未能加载，请刷新页面。';};

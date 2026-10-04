@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/game.css?v=20260930b">
   <link rel="stylesheet" href="/rules.css?v=20260930b">
   <link rel="stylesheet" href="/settlement.css?v=20261003b">
+  <link rel="stylesheet" href="/skip-comparison.css?v=20261004a">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -110,7 +111,7 @@
           </section>
           <section v-else-if="presentation==='compare'&&comparison" class="stage-center" :key="'compare'+compareIndex" aria-label="相邻牌组比较">
             <div class="comparison-row"><article v-for="(entry,i) in compareEntries" :key="entry.playerId" class="comparison-side"><div v-if="i===1" class="compare-symbol" style="position:absolute;left:calc(50% - 20px);top:112px">{{verdictVisible?comparisonSymbol:'⋯'}}</div><div class="comparison-name"><img :src="coinImage(entry.coin)" :alt="`硬币${entry.coin}`"><span>{{entry.playerId}}</span></div><div class="five-cards"><playing-card v-for="card in entry.hand.cards" :key="cardText(card)" :card="card"></playing-card></div><div class="hand-label">{{entry.hand.categoryName}}</div></article></div>
-            <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div>
+            <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div><button class="skip-comparison" :disabled="!canSkipComparison||hasSkippedComparison" @click="command('SKIP_COMPARISON')">{{hasSkippedComparison?'等待其他玩家…':'跳过比较'}} <small>{{state.comparisonSkipVotes.length}}/{{state.players.length}}</small></button>
           </section>
           <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
             <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button><button class="text-button" @click="replayReveal">↻ 重看比较</button></div></div>
@@ -165,6 +166,6 @@
 <script src="/vendor/vue.global.prod.js"></script>
 <script src="/tabletop-art.js?v=20260930a"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/game-client.js?v=20261003c"></script>
+<script src="/game-client.js?v=20261004a"></script>
 </body>
 </html>

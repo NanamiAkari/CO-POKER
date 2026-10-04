@@ -230,3 +230,13 @@ test('two to five players show one icon-only review marker between each adjacent
     assert.doesNotMatch(output,/class="order-arrow"|class="marker-coins"/);
   }
 });
+
+test('skip comparison control appears only during comparison and requires all-player state', async () => {
+  const base={phase:'SETTLEMENT',players:[{id:'A',currentCoin:2},{id:'B',currentCoin:1}],result:{success:false,comparisons:[{higherCoin:2,lowerCoin:1,higherPlayerId:'A',lowerPlayerId:'B',passed:false,comparison:1}]},finalHands:[]};
+  const compare=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,base);});
+  assert.match(compare,/跳过比较/);assert.match(compare,/0\/2/);
+  const voted=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,{...base,comparisonSkipVotes:['A']});});
+  assert.match(voted,/等待其他玩家/);assert.match(voted,/1\/2/);
+  const select=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='select';Object.assign(v.state,base);});
+  assert.doesNotMatch(select,/跳过比较/);
+});
