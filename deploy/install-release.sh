@@ -20,6 +20,8 @@ test -f "$staging/public/index.html"
 
 cp -a "$app_root/src" "$backup/src"
 cp -a "$app_root/public" "$backup/public"
+cp -f "$app_root/package.json" "$backup/package.json"
+cp -f "$app_root/package-lock.json" "$backup/package-lock.json"
 
 rollback() {
   status=$?
@@ -40,8 +42,6 @@ cp -a "$staging/public/." "$app_root/public/"
 cp -f "$staging/package.json" "$app_root/package.json"
 cp -f "$staging/package-lock.json" "$app_root/package-lock.json"
 cp -f "$staging/ecosystem.config.cjs" "$app_root/ecosystem.config.cjs"
-cp -f "$app_root/package.json" "$backup/package.json"
-cp -f "$app_root/package-lock.json" "$backup/package-lock.json"
 
 cd "$app_root"
 npm ci --omit=dev

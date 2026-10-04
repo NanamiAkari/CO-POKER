@@ -81,7 +81,9 @@ jobs:
           RELEASE_ID: ${{ needs.verify.outputs.release_id }}
         run: |
           archive="release-${RELEASE_ID}.tar.gz"
+          mkdir -p deploy-files
+          tar -xzf "$archive" -C deploy-files deploy/install-release.sh
           ssh -i ~/.ssh/copoker_deploy -p "${PROD_PORT:-22}" "${PROD_USER:-root}@${PROD_HOST}" "mkdir -p /tmp/copoker-release"
           scp -i ~/.ssh/copoker_deploy -P "${PROD_PORT:-22}" "$archive" "${PROD_USER:-root}@${PROD_HOST}:/tmp/copoker-release/$archive"
-          scp -i ~/.ssh/copoker_deploy -P "${PROD_PORT:-22}" deploy/install-release.sh "${PROD_USER:-root}@${PROD_HOST}:/tmp/copoker-release/install-release.sh"
+          scp -i ~/.ssh/copoker_deploy -P "${PROD_PORT:-22}" deploy-files/deploy/install-release.sh "${PROD_USER:-root}@${PROD_HOST}:/tmp/copoker-release/install-release.sh"
           ssh -i ~/.ssh/copoker_deploy -p "${PROD_PORT:-22}" "${PROD_USER:-root}@${PROD_HOST}" "chmod 700 /tmp/copoker-release/install-release.sh && /tmp/copoker-release/install-release.sh /tmp/copoker-release/$archive '$RELEASE_ID'"
