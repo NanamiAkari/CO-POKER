@@ -93,6 +93,42 @@ test('host can render the post-round room rules panel', async () => {
   assert.match(view, /保存下一场规则/);
 });
 
+test('live chat bubbles follow the speaker in both player viewpoints and settlement order', async () => {
+  const players=[{id:'A',currentCoin:1},{id:'B',currentCoin:2}];
+  for(const viewer of ['A','B']){
+    const other=viewer==='A'?'B':'A';
+    const output=await renderScreen(v=>{
+      v.inRoom.value=true;v.playerId.value=viewer;v.roomId.value='ABC123';
+      v.state.players=players;v.state.phase='ROUND_1_COINS';v.chatOpen.value=false;
+      for(const [index,playerId] of ['A','B'].entries())v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:index+1,playerId,role:'PLAYER',kind:'text',text:playerId+' 加油 👍'}});
+    });
+    assert.match(output,new RegExp('<article[^>]*data-player="'+other+'"[\\s\\S]*?data-speaker="'+other+'"'));
+    assert.match(output,new RegExp('<div class="self-hand[^>]*>[\\s\\S]*?data-speaker="'+viewer+'"'));
+    assert.equal((output.match(/class="chat-bubble"/g)||[]).length,2);
+    assert.doesNotMatch(output,/id="room-chat-panel"/,'folding the log does not hide bubbles');
+  }
+  const result=await renderScreen(v=>{
+    v.inRoom.value=true;v.playerId.value='丙';v.roomId.value='ABC123';v.presentation.value='summary';Object.assign(v.state,fivePlayerResult());
+    for(const [i,p] of v.state.players.entries())v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:i+1,playerId:p.id,role:'PLAYER',kind:'text',text:'下一局一起加油'}});
+  });
+  const order=result.match(/<ol class="order-players">[\s\S]*?<\/ol>/)[0];
+  assert.equal((order.match(/class="chat-bubble"/g)||[]).length,5);
+  assert.equal((result.match(/class="chat-bubble"/g)||[]).length,5,'settlement has no duplicate bubbles at hidden seats');
+});
+
+test('bubble contents are plain text, history does not pop, and spectators retain attribution', async () => {
+  const output=await renderScreen(v=>{
+    v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';v.state.players=[{id:'A'}];
+    v.handleChatMessage({type:'ROOM_STATE',roomId:'ABC123',chatHistory:[{id:1,playerId:'A',role:'PLAYER',kind:'text',text:'旧消息'}]});
+    assert.equal(v.chatBubbleFor('A'),null);
+    v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:2,playerId:'A',role:'PLAYER',kind:'text',text:'<img src=x onerror=alert(1)> 😀'}});
+    v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:3,playerId:'观战者',role:'SPECTATOR',kind:'text',text:'加油'}});
+  });
+  assert.match(output,/<p class="chat-bubble-text">&lt;img src=x onerror=alert\(1\)&gt; 😀<\/p>/);
+  assert.match(output,/class="chat-bubble-author">观战者 · 观战/);
+  assert.doesNotMatch(output,/<img src=x/);
+});
+
 test('joker rule is off by default, configurable at creation and retained in next-game settings', async () => {
   const creation=await renderScreen(v=>{v.panel.value='create';assert.equal(v.roomSettings.includeJokers,false);});
   assert.match(creation,/type="checkbox"[^>]*aria-label="牌堆加入大小王"/);

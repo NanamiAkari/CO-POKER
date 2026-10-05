@@ -1,0 +1,193 @@
+/* Keep speech beside its speaker without intercepting cards or coins. */
+.chat-bubble {
+  position: absolute;
+  z-index: 18;
+  width: 184px;
+  max-width: 210px;
+  padding: 8px 12px;
+  border: 1px solid #dac997;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff8e7, #eee0b8);
+  color: #244137;
+  box-shadow: 0 5px 14px #071b1840, inset 0 1px #fff9;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+  letter-spacing: 0;
+  pointer-events: none;
+  user-select: none;
+  isolation: isolate;
+  animation: chat-bubble-arrive .24s cubic-bezier(.18, .7, .3, 1) both;
+}
+
+.chat-bubble::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: calc(50% - 5px);
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid #dac997;
+  border-left: 1px solid #dac997;
+  background: #fff7e4;
+  transform: rotate(45deg);
+  z-index: -1;
+}
+
+.chat-bubble-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 34px;
+  margin: 0;
+}
+
+.chat-bubble.emoji-only .chat-bubble-text {
+  font-size: 19px;
+  line-height: 23px;
+  max-height: 46px;
+}
+
+.chat-bubble-author {
+  display: block;
+  margin-bottom: 3px;
+  color: #667447;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-bubble-sticker {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: auto;
+  object-fit: contain;
+}
+
+/* Four small history coins occupy one row, leaving room for speech below. */
+.opponents .history-coins {
+  width: auto;
+  max-width: 190px;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+
+.opponents .history-coins img {
+  width: 22px;
+  height: 22px;
+}
+
+.seat > .chat-bubble {
+  top: 160px;
+  left: calc(50% - 92px);
+}
+
+.seat > .chat-bubble.emoji-only .chat-bubble-text {
+  -webkit-line-clamp: 1;
+  max-height: 23px;
+}
+
+.seat > .chat-bubble .chat-bubble-sticker { width: 32px; height: 32px; }
+
+.game-canvas .board {
+  top: 310px;
+}
+
+.self-hand > .chat-bubble {
+  top: 20px;
+  right: calc(100% + 16px);
+  width: 210px;
+}
+
+.self-hand > .chat-bubble::before {
+  top: 18px;
+  left: auto;
+  right: -5px;
+  border: 0;
+  border-top: 1px solid #dac997;
+  border-right: 1px solid #dac997;
+  background: #f4e9ca;
+}
+
+.self-hand > .chat-bubble .chat-bubble-text {
+  -webkit-line-clamp: 3;
+  max-height: 51px;
+}
+
+.self-hand > .chat-bubble.emoji-only .chat-bubble-text {
+  max-height: 69px;
+}
+
+.order-players li > .chat-bubble {
+  top: 58px;
+  left: 50%;
+  width: 184px;
+  max-width: calc(100% + 20px);
+  transform: translateX(-50%);
+}
+
+.order-players li > .chat-bubble .chat-bubble-text {
+  display: block;
+  max-height: 17px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.order-players li > .chat-bubble .chat-bubble-sticker { width: 17px; height: 17px; }
+
+.spectator-bubble-anchor {
+  position: absolute;
+  right: 32px;
+  bottom: 64px;
+  z-index: 18;
+  width: 200px;
+  pointer-events: none;
+}
+
+.spectator-bubble-anchor > .chat-bubble {
+  position: relative;
+  width: 200px;
+}
+
+.spectator-bubble-anchor > .chat-bubble::before {
+  top: auto;
+  bottom: -5px;
+  left: 18px;
+  border: 0;
+  border-right: 1px solid #dac997;
+  border-bottom: 1px solid #dac997;
+  background: #eee0b8;
+}
+
+.chat-bubble-enter-active,
+.chat-bubble-leave-active {
+  transition: opacity .2s, filter .2s;
+}
+
+.chat-bubble-enter-from,
+.chat-bubble-leave-to {
+  opacity: 0;
+  filter: blur(2px);
+}
+
+@keyframes chat-bubble-arrive {
+  from { opacity: 0; margin-top: 5px; }
+  to { opacity: 1; margin-top: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble { animation: none; }
+  .chat-bubble-enter-active,
+  .chat-bubble-leave-active { transition: none; }
+}

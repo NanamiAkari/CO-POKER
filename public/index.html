@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
   <link rel="stylesheet" href="/room-chat.css?v=20261005-chat">
+  <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-bubbles">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -66,6 +67,7 @@
             <div class="seat-cards"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
             <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
             <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
+            <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(player.id)" :sticker="chatSticker(chatBubbleFor(player.id)?.stickerId)"></chat-bubble>
           </article>
           <article v-for="n in (state.phase==='WAITING'?Math.max(0,3-opponents.length):0)" :key="'empty'+n" class="seat empty-seat" aria-hidden="true">＋<small>空位</small></article>
         </div>
@@ -75,6 +77,7 @@
             <ol class="order-players">
               <li v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :style="{gridColumn:2*i+1}" :class="{current:activeSettlementPlayers.includes(entry.playerId)}">
                 <img :src="coinImage(entry.coin)" :alt="`硬币 ${entry.coin}`"><span class="order-player-name" :title="entry.playerId">{{entry.playerId}}<small v-if="entry.playerId===playerId">我</small></span>
+                <chat-bubble :message="chatBubbleFor(entry.playerId)" :sticker="chatSticker(chatBubbleFor(entry.playerId)?.stickerId)"></chat-bubble>
               </li>
             </ol>
             <nav class="comparison-trail" aria-label="相邻比较记录">
@@ -100,10 +103,12 @@
         <div v-if="role==='PLAYER'" class="self-zone">
           <div class="self-hand" :class="{deal:presentation==='deal'}"><playing-card v-for="(card,i) in (state.ownHoleCards.length?state.ownHoleCards:Array(handCount).fill(null))" :key="i" :card="card" :style="{'--order':i}"></playing-card><span class="self-name">{{playerId}}</span>
             <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text"><strong>{{state.ownEstimatedHand.categoryName}}</strong><span class="hint-cards"><playing-card v-for="card in state.ownEstimatedHand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(state.ownEstimatedHand,card)"></playing-card></span></span></button>
+            <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(playerId)" :sticker="chatSticker(chatBubbleFor(playerId)?.stickerId)"></chat-bubble>
           </div>
           <div class="own-tray"><div class="own-coin-slot" :data-owner-anchor="playerId"><button v-if="myCoin" class="coin-button" :data-live-coin="myCoin" :disabled="!canAct" :aria-label="`归还硬币 ${myCoin}`" @click="returnCoin(myCoin)"><img :src="coinImage(myCoin)" :alt="`硬币 ${myCoin}`"></button><span v-else class="coin-outline" aria-hidden="true"></span></div><div class="history-coins"><img v-for="(coin,i) in state.coinHistory" :key="i" :src="coinImage(coin)" :alt="`第${i+1}轮 硬币${coin}`"></div></div>
         </div>
         <div v-else class="spectating">◉ 观战席</div>
+        <div class="spectator-bubble-anchor"><chat-bubble :message="chatSpectatorBubble" :sticker="chatSticker(chatSpectatorBubble?.stickerId)" :show-author="true"></chat-bubble></div>
         <div class="score-pips" :aria-label="`累计成功${displayedSuccessCount}次，失败${displayedFailureCount}次`"><div class="score-row win"><span v-for="n in 3" :class="{lit:n<=displayedSuccessCount}">✦</span></div><div class="score-row loss"><span v-for="n in 3" :class="{lit:n<=displayedFailureCount}">×</span></div></div>
 
         <transition name="stage" mode="out-in">
@@ -206,7 +211,7 @@
 <script src="/tabletop-art.js?v=20261005-jokers"></script>
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/room-chat.js?v=20261005-chat"></script>
-<script src="/game-client.js?v=20261005-chat"></script>
+<script src="/room-chat.js?v=20261005-bubbles"></script>
+<script src="/game-client.js?v=20261005-bubbles"></script>
 </body>
 </html>

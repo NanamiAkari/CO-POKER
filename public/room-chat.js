@@ -33,11 +33,51 @@
     const chatOpen = ref(true), chatDraft = ref(''), chatMessages = ref([]), chatUnread = ref(0);
     const chatPanel = ref(null), chatError = ref(''), chatSending = ref(false);
     const chatInput = ref(null), chatLog = ref(null), chatStickers = ref(cleanCatalog(options.catalog));
+    const chatBubbles = ref(new Map());
+    const bubbleTimers = new Map();
+    const scheduleBubble = options.setTimeout || setTimeout, cancelBubble = options.clearTimeout || clearTimeout;
+    let bubbleRoomId = roomId.value, bubbleLastSeenId = 0;
+    const chatSpectatorBubble = computed(() => {
+      if (bubbleRoomId !== roomId.value) return null;
+      let latest = null;
+      for (const bubble of chatBubbles.value.values()) {
+        if (bubble.role === 'SPECTATOR' && (!latest || bubble.id > latest.id)) latest = bubble;
+      }
+      return latest;
+    });
     const chatDraftLength = computed(() => Array.from(chatDraft.value).length);
     const chatCanSend = computed(() => connected.value && Boolean(roomId.value) && !chatSending.value && Boolean(chatDraft.value.trim()) && Array.from(chatDraft.value.trim()).length <= MAX_LENGTH);
     let pending = null, lastFailure = null, ackTimer = null, serial = 0, composing = false;
     let generation = 0, savedSelection = null;
     const session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+
+    function clearBubbles() {
+      for (const timer of bubbleTimers.values()) cancelBubble(timer);
+      bubbleTimers.clear();
+      chatBubbles.value = new Map();
+      bubbleLastSeenId = 0;
+      bubbleRoomId = roomId.value;
+    }
+
+    function chatBubbleFor(id) {
+      return bubbleRoomId === roomId.value ? chatBubbles.value.get(id) || null : null;
+    }
+
+    function showBubble(message) {
+      const owner = message.playerId;
+      if (bubbleTimers.has(owner)) cancelBubble(bubbleTimers.get(owner));
+      chatBubbles.value.set(owner, { ...message });
+      const epoch = generation, room = roomId.value;
+      // Brief remarks last six seconds; allow extra reading time for long text.
+      const duration = message.kind === 'text' ? Math.min(12000, Math.max(6000, Array.from(message.text).length * 80)) : 6000;
+      const timer = scheduleBubble(() => {
+        if (epoch !== generation || room !== roomId.value || chatBubbles.value.get(owner)?.id !== message.id) return;
+        chatBubbles.value.delete(owner);
+        bubbleTimers.delete(owner);
+      }, duration);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+      bubbleTimers.set(owner, timer);
+    }
 
     function clearPending() {
       clearTimeout(ackTimer);
@@ -156,6 +196,7 @@
     function chatCompositionEnd() { composing = false; }
 
     function mergeMessages(messages, live) {
+      if (bubbleRoomId !== roomId.value) clearBubbles();
       const merged = new Map(chatMessages.value.map(message => [message.id, message]));
       let changed = false, own = false;
       for (const message of messages) {
@@ -163,8 +204,12 @@
         if (message.kind === 'text' && typeof message.text !== 'string') continue;
         if (message.kind === 'sticker' && typeof message.stickerId !== 'string') continue;
         acknowledge(message);
+        // Server IDs increase per room. History and evicted duplicate echoes must not replay bubbles.
+        const fresh = message.id > bubbleLastSeenId;
+        bubbleLastSeenId = Math.max(bubbleLastSeenId, message.id);
         if (merged.has(message.id)) continue;
         merged.set(message.id, { ...message });
+        if (live && fresh) showBubble(message);
         changed = true;
         if (message.playerId === playerId.value) own = true;
         else if (live && !chatOpen.value) chatUnread.value += 1;
@@ -200,6 +245,7 @@
     function resetChat() {
       generation += 1;
       clearPending();
+      clearBubbles();
       lastFailure = null;
       savedSelection = null;
       composing = false;
@@ -213,6 +259,7 @@
 
     return {
       chatOpen, chatDraft, chatMessages, chatUnread, chatPanel, chatError, chatSending, chatInput, chatLog,
+      chatBubbles, chatBubbleFor, chatSpectatorBubble,
       chatEmojis: EMOJIS, chatStickers, chatMaxLength: MAX_LENGTH, chatDraftLength, chatCanSend,
       toggleChat, toggleChatPanel, insertEmoji, sendChat, sendSticker, chatKeydown, chatCompositionStart, chatCompositionEnd,
       handleChatMessage, resetChat, loadChatStickers, setChatStickers,

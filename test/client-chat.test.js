@@ -13,6 +13,150 @@ function fixture(options = {}) {
   return { chat, sent, roomId, playerId, connected, message, receive, ack };
 }
 
+function bubbleClock() {
+  let now = 0, serial = 0;
+  const tasks = new Map(), callbacks = [];
+  return {
+    options: {
+      setTimeout(callback, delay) {
+        const id = ++serial;
+        tasks.set(id, { callback, due: now + delay });
+        callbacks.push(callback);
+        return id;
+      },
+      clearTimeout(id) { tasks.delete(id); }
+    },
+    callbacks,
+    get pending() { return tasks.size; },
+    advance(ms) {
+      const target = now + ms;
+      while (true) {
+        const next = [...tasks.entries()].filter(([, task]) => task.due <= target).sort((a, b) => a[1].due - b[1].due)[0];
+        if (!next) break;
+        const [id, task] = next;
+        now = task.due;
+        tasks.delete(id);
+        task.callback();
+      }
+      now = target;
+    }
+  };
+}
+
+test('confirmed live chat shows bubbles even when chat is collapsed; pending text does not', () => {
+  const clock = bubbleClock();
+  const { chat, sent, ack, message, receive } = fixture(clock.options);
+  chat.toggleChat();
+  chat.chatDraft.value = '我先选 👍';
+  chat.sendChat();
+  assert.equal(chat.chatBubbleFor('Alice'), null);
+  ack(sent[0]);
+  receive(message(2, '收到 👏'));
+  assert.equal(chat.chatBubbleFor('Alice').text, '我先选 👍');
+  assert.equal(chat.chatBubbleFor('Bob').text, '收到 👏');
+  assert.equal(chat.chatBubbles.value.size, 2);
+  assert.equal(chat.chatUnread.value, 1);
+  clock.advance(5999);
+  assert.equal(chat.chatBubbles.value.size, 2);
+  clock.advance(1);
+  assert.equal(chat.chatBubbles.value.size, 0);
+});
+
+test('bubble replacement resets only its sender timer and stale callbacks cannot erase it', () => {
+  const clock = bubbleClock();
+  const { chat, receive, message } = fixture(clock.options);
+  receive(message(1, '第一条'));
+  clock.advance(1000);
+  receive(message(2, '另一位', 'Carol'));
+  clock.advance(2000);
+  receive(message(3, '更新了'));
+  assert.equal(clock.pending, 2);
+  clock.callbacks[0]();
+  assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
+  clock.advance(4000);
+  assert.equal(chat.chatBubbleFor('Carol'), null);
+  assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
+  clock.advance(2000);
+  assert.equal(chat.chatBubbleFor('Bob'), null);
+});
+
+test('long bubble text receives more reading time, capped at twelve seconds using Unicode length', () => {
+  const clock = bubbleClock();
+  const { chat, receive, message } = fixture(clock.options);
+  receive(message(1, '👍'.repeat(100)));
+  receive(message(2, '长'.repeat(200), 'Carol'));
+  clock.advance(7999);
+  assert.ok(chat.chatBubbleFor('Bob'));
+  clock.advance(1);
+  assert.equal(chat.chatBubbleFor('Bob'), null);
+  assert.ok(chat.chatBubbleFor('Carol'));
+  clock.advance(3999);
+  assert.ok(chat.chatBubbleFor('Carol'));
+  clock.advance(1);
+  assert.equal(chat.chatBubbleFor('Carol'), null);
+});
+
+test('history, duplicate echoes, and messages evicted from history never replay or prolong bubbles', () => {
+  const clock = bubbleClock();
+  const { chat, receive, message } = fixture(clock.options);
+  chat.handleChatMessage({ type: 'ROOM_CREATED', roomId: 'ABC123', chatHistory: [message(1, '已有记录')] });
+  assert.equal(chat.chatBubbles.value.size, 0);
+  receive(message(1, '已有记录'));
+  assert.equal(chat.chatBubbles.value.size, 0);
+  receive(message(2, '刚刚发的'));
+  clock.advance(4000);
+  receive(message(2, '刚刚发的'));
+  chat.handleChatMessage({ type: 'ROOM_STATE', roomId: 'ABC123', chatHistory: Array.from({ length: 101 }, (_, index) => message(index + 3, '更多历史')) });
+  assert.equal(chat.chatBubbleFor('Bob').id, 2);
+  clock.advance(2000);
+  assert.equal(chat.chatBubbleFor('Bob'), null);
+  receive(message(2, '刚刚发的'));
+  receive(message(103, '更多历史'));
+  assert.equal(chat.chatBubbles.value.size, 0);
+  receive(message(104, '新的消息'));
+  assert.equal(chat.chatBubbleFor('Bob').id, 104);
+});
+
+test('leaving clears all bubble timers and protects the next room from old callbacks and messages', () => {
+  const clock = bubbleClock();
+  const { chat, receive, message, roomId } = fixture(clock.options);
+  receive(message(1, '旧房间'));
+  receive({ ...message(2, '旧观战', 'Watcher'), role: 'SPECTATOR' });
+  const callbacks = [...clock.callbacks];
+  chat.resetChat();
+  assert.equal(clock.pending, 0);
+  assert.equal(chat.chatBubbles.value.size, 0);
+  assert.equal(chat.chatSpectatorBubble.value, null);
+  roomId.value = 'NEW123';
+  receive(message(1, '新房间'));
+  for (const callback of callbacks) callback();
+  chat.handleChatMessage({ type: 'CHAT_MESSAGE', roomId: 'ABC123', message: message(3, '迟到的旧消息') });
+  assert.equal(chat.chatBubbleFor('Bob').text, '新房间');
+  roomId.value = 'THIRD1';
+  assert.equal(chat.chatBubbleFor('Bob'), null);
+  assert.equal(chat.chatSpectatorBubble.value, null);
+  chat.resetChat();
+});
+
+test('spectator bubble identifies the latest observer independently from player bubbles and retains sticker data', () => {
+  const clock = bubbleClock();
+  const { chat, receive, message } = fixture(clock.options);
+  receive({ ...message(1, '观战消息', 'Watcher'), role: 'SPECTATOR' });
+  clock.advance(1000);
+  receive({ id: 2, playerId: 'SecondWatcher', role: 'SPECTATOR', kind: 'sticker', stickerId: 'hi', timestamp: 123 });
+  receive(message(3, '<img src=x onerror=alert(1)> 👍'));
+  assert.equal(chat.chatSpectatorBubble.value.playerId, 'SecondWatcher');
+  assert.equal(chat.chatSpectatorBubble.value.stickerId, 'hi');
+  assert.equal(chat.chatSpectatorBubble.value.timestamp, 123);
+  assert.equal(chat.chatBubbleFor('Bob').text, '<img src=x onerror=alert(1)> 👍');
+  clock.advance(5000);
+  assert.equal(chat.chatBubbleFor('Watcher'), null);
+  assert.equal(chat.chatSpectatorBubble.value.playerId, 'SecondWatcher');
+  clock.advance(1000);
+  assert.equal(chat.chatSpectatorBubble.value, null);
+  assert.equal(chat.chatBubbleFor('Bob'), null);
+});
+
 test('chat waits for the server echo, preserves text typed during delivery, and does not duplicate the echo', () => {
   const { chat, sent, ack } = fixture();
   chat.chatDraft.value = '先等一下';
@@ -247,14 +391,19 @@ test('real WebSocket chat acknowledges controller ids, syncs spectators, and rec
   assert.equal(host.chat.chatSending.value, false);
   assert.equal(host.chat.chatDraft.value, '');
   assert.deepEqual(host.chat.chatMessages.value, guest.chat.chatMessages.value);
+  assert.equal(host.chat.chatBubbleFor('Alice').text, '这局加油 👍');
+  assert.deepEqual(host.chat.chatBubbleFor('Alice'), guest.chat.chatBubbleFor('Alice'));
 
   const watcher = await connect('Watcher');
   await watcher.request({ type: 'JOIN_ROOM', playerId: 'Watcher', role: 'SPECTATOR', roomId: host.roomId.value }, 'ROOM_STATE');
   assert.equal(watcher.chat.chatMessages.value[0].text, '这局加油 👍');
+  assert.equal(watcher.chat.chatBubbleFor('Alice'), null, 'joining history does not replay old bubbles');
   watcher.chat.chatDraft.value = '观战也能聊';
   watcher.chat.sendChat();
   await Promise.all([host.next('CHAT_MESSAGE'), guest.next('CHAT_MESSAGE'), watcher.next('CHAT_MESSAGE')]);
   assert.equal(host.chat.chatMessages.value.at(-1).role, 'SPECTATOR');
+  assert.equal(host.chat.chatSpectatorBubble.value.text, '观战也能聊');
+  assert.deepEqual(host.chat.chatSpectatorBubble.value, watcher.chat.chatSpectatorBubble.value);
 
   guest.chat.chatDraft.value = '坏\u0001字符';
   assert.equal(guest.chat.sendChat(), true);
