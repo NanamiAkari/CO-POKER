@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
-  <link rel="stylesheet" href="/room-chat.css?v=20261005-chat">
-  <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-bubbles">
+  <link rel="stylesheet" href="/room-chat.css?v=20261005-table-chat">
+  <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-table-chat">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -136,7 +136,6 @@
             <p class="detail-reason">{{comparisonDetail.reason}}</p>
           </aside>
         </transition>
-      </div>
       <aside class="room-chat" aria-label="房间聊天" @keydown.esc.stop="chatPanel=null">
         <button v-if="!chatOpen" class="chat-toggle" @click="toggleChat" aria-label="打开房间聊天" aria-expanded="false" aria-controls="room-chat-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg> 聊天 <span v-if="chatUnread" class="chat-unread">{{chatUnread>99?'99+':chatUnread}}</span></button>
         <section v-else id="room-chat-panel" class="chat-panel">
@@ -159,6 +158,7 @@
           </form>
         </section>
       </aside>
+      </div>
     </main>
 
     <transition name="fade">
@@ -211,7 +211,7 @@
 <script src="/tabletop-art.js?v=20261005-jokers"></script>
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/room-chat.js?v=20261005-bubbles"></script>
-<script src="/game-client.js?v=20261005-bubbles"></script>
+<script src="/room-chat.js?v=20261005-table-chat"></script>
+<script src="/game-client.js?v=20261005-table-chat"></script>
 </body>
 </html>

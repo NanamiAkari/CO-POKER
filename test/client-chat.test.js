@@ -56,10 +56,11 @@ test('confirmed live chat shows bubbles even when chat is collapsed; pending tex
   assert.equal(chat.chatBubbleFor('Bob').text, '收到 👏');
   assert.equal(chat.chatBubbles.value.size, 2);
   assert.equal(chat.chatUnread.value, 1);
-  clock.advance(5999);
+  clock.advance(2999);
   assert.equal(chat.chatBubbles.value.size, 2);
   clock.advance(1);
   assert.equal(chat.chatBubbles.value.size, 0);
+  assert.equal(chat.chatMessages.value.length, 2, 'fading bubbles retain the full chat history');
 });
 
 test('bubble replacement resets only its sender timer and stale callbacks cannot erase it', () => {
@@ -68,32 +69,38 @@ test('bubble replacement resets only its sender timer and stale callbacks cannot
   receive(message(1, '第一条'));
   clock.advance(1000);
   receive(message(2, '另一位', 'Carol'));
-  clock.advance(2000);
+  clock.advance(1000);
   receive(message(3, '更新了'));
   assert.equal(clock.pending, 2);
   clock.callbacks[0]();
   assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
-  clock.advance(4000);
+  clock.advance(1999);
+  assert.equal(chat.chatBubbleFor('Carol').text, '另一位');
+  assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
+  clock.advance(1);
   assert.equal(chat.chatBubbleFor('Carol'), null);
   assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
-  clock.advance(2000);
+  clock.advance(999);
+  assert.equal(chat.chatBubbleFor('Bob').text, '更新了');
+  clock.advance(1);
   assert.equal(chat.chatBubbleFor('Bob'), null);
 });
 
-test('long bubble text receives more reading time, capped at twelve seconds using Unicode length', () => {
+test('long text, emoji, and stickers all begin fading after exactly three seconds', () => {
   const clock = bubbleClock();
   const { chat, receive, message } = fixture(clock.options);
   receive(message(1, '👍'.repeat(100)));
   receive(message(2, '长'.repeat(200), 'Carol'));
-  clock.advance(7999);
+  receive({ id: 3, kind: 'sticker', playerId: 'Alice', role: 'PLAYER', stickerId: 'hi' });
+  clock.advance(2999);
   assert.ok(chat.chatBubbleFor('Bob'));
+  assert.ok(chat.chatBubbleFor('Carol'));
+  assert.equal(chat.chatBubbleFor('Alice').stickerId, 'hi');
   clock.advance(1);
   assert.equal(chat.chatBubbleFor('Bob'), null);
-  assert.ok(chat.chatBubbleFor('Carol'));
-  clock.advance(3999);
-  assert.ok(chat.chatBubbleFor('Carol'));
-  clock.advance(1);
   assert.equal(chat.chatBubbleFor('Carol'), null);
+  assert.equal(chat.chatBubbleFor('Alice'), null);
+  assert.equal(clock.pending, 0);
 });
 
 test('history, duplicate echoes, and messages evicted from history never replay or prolong bubbles', () => {
@@ -104,11 +111,13 @@ test('history, duplicate echoes, and messages evicted from history never replay 
   receive(message(1, '已有记录'));
   assert.equal(chat.chatBubbles.value.size, 0);
   receive(message(2, '刚刚发的'));
-  clock.advance(4000);
+  clock.advance(2000);
   receive(message(2, '刚刚发的'));
   chat.handleChatMessage({ type: 'ROOM_STATE', roomId: 'ABC123', chatHistory: Array.from({ length: 101 }, (_, index) => message(index + 3, '更多历史')) });
   assert.equal(chat.chatBubbleFor('Bob').id, 2);
-  clock.advance(2000);
+  clock.advance(999);
+  assert.equal(chat.chatBubbleFor('Bob').id, 2);
+  clock.advance(1);
   assert.equal(chat.chatBubbleFor('Bob'), null);
   receive(message(2, '刚刚发的'));
   receive(message(103, '更多历史'));
@@ -149,10 +158,14 @@ test('spectator bubble identifies the latest observer independently from player 
   assert.equal(chat.chatSpectatorBubble.value.stickerId, 'hi');
   assert.equal(chat.chatSpectatorBubble.value.timestamp, 123);
   assert.equal(chat.chatBubbleFor('Bob').text, '<img src=x onerror=alert(1)> 👍');
-  clock.advance(5000);
+  clock.advance(1999);
+  assert.ok(chat.chatBubbleFor('Watcher'));
+  clock.advance(1);
   assert.equal(chat.chatBubbleFor('Watcher'), null);
   assert.equal(chat.chatSpectatorBubble.value.playerId, 'SecondWatcher');
-  clock.advance(1000);
+  clock.advance(999);
+  assert.equal(chat.chatSpectatorBubble.value.playerId, 'SecondWatcher');
+  clock.advance(1);
   assert.equal(chat.chatSpectatorBubble.value, null);
   assert.equal(chat.chatBubbleFor('Bob'), null);
 });

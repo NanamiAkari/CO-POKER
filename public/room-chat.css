@@ -1,10 +1,9 @@
 .room-chat {
-  position: fixed;
-  right: 16px;
-  bottom: 24px;
+  position: absolute;
+  right: 28px;
+  bottom: 40px;
   z-index: 30;
-  width: 288px;
-  max-width: calc(100vw - 32px);
+  width: 344px;
   color: #f0eadb;
   font-size: 14px;
 }
@@ -76,7 +75,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  height: min(460px, calc(100dvh - 48px));
+  height: 550px;
   min-height: 220px;
   overflow: hidden;
   border: 1px solid #bda06a77;
@@ -418,34 +417,7 @@
   object-fit: contain;
 }
 
-@media (min-width: 1100px) {
-  .game-canvas {
-    left: calc((100% - 320px) / 2);
-  }
-}
-
-@media (max-width: 1099px) {
-  .room-chat {
-    bottom: max(14px, env(safe-area-inset-bottom));
-    right: max(12px, env(safe-area-inset-right));
-    width: 300px;
-  }
-
-  .room-chat .chat-panel {
-    height: min(460px, 56dvh);
-  }
-}
-
 @media (max-width: 700px) {
-  .room-chat {
-    max-width: calc(100vw - 24px);
-  }
-
-  .room-chat .chat-panel {
-    height: 48dvh;
-    min-height: min(280px, calc(100dvh - 32px));
-  }
-
   .room-chat .chat-composer textarea {
     font-size: 16px;
   }

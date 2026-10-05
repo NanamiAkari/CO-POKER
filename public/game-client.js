@@ -186,7 +186,7 @@
       }
     }
     function trapFocus(event){if(event.key==='Escape'&&inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
-    function resize(){const chatWidth=window.innerWidth>=1100?320:0;scale.value=Math.min((window.innerWidth-chatWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
+    function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
     async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();resize();}catch{notify('当前浏览器不支持全屏',true);}}
     function copyRoomLegacy(text){
       // HTTP origins do not expose Clipboard API. Keep this path synchronous

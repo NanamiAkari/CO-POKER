@@ -68,8 +68,8 @@
       if (bubbleTimers.has(owner)) cancelBubble(bubbleTimers.get(owner));
       chatBubbles.value.set(owner, { ...message });
       const epoch = generation, room = roomId.value;
-      // Brief remarks last six seconds; allow extra reading time for long text.
-      const duration = message.kind === 'text' ? Math.min(12000, Math.max(6000, Array.from(message.text).length * 80)) : 6000;
+      // Every bubble begins fading after three seconds; full messages remain in chat.
+      const duration = 3000;
       const timer = scheduleBubble(() => {
         if (epoch !== generation || room !== roomId.value || chatBubbles.value.get(owner)?.id !== message.id) return;
         chatBubbles.value.delete(owner);
