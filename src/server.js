@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { GameRoom, PHASES } = require('./game');
+const { RoomChat, ChatError } = require('./chat');
 
 function validateOptions(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid room options');
@@ -26,8 +27,8 @@ function playerName(value) {
 }
 
 class RoomManager {
-  constructor() { this.rooms = new Map(); }
-  create(options = {}) { options = validateOptions(options); const id = crypto.randomBytes(3).toString('hex').toUpperCase(); const room = { id, hostId: null, clients: new Map(), spectators: [], game: null, options }; this.rooms.set(id, room); return room; }
+  constructor({ chatOptions } = {}) { this.rooms = new Map(); this.chatOptions = chatOptions; }
+  create(options = {}) { options = validateOptions(options); const id = crypto.randomBytes(3).toString('hex').toUpperCase(); const room = { id, hostId: null, clients: new Map(), spectators: [], game: null, options, chat: new RoomChat(this.chatOptions) }; this.rooms.set(id, room); return room; }
   get(id) { return this.rooms.get(id); }
 }
 
@@ -40,10 +41,9 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     if (!file.startsWith(path.join(__dirname, '..', 'public'))) { res.writeHead(400); return res.end('Bad request'); }
     try {
       const content = fs.readFileSync(file);
-      const type = file.endsWith('.html') ? 'text/html'
-        : file.endsWith('.js') ? 'text/javascript'
-          : file.endsWith('.svg') ? 'image/svg+xml'
-            : 'text/css';
+      const type = ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+        '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp', '.gif': 'image/gif' })[path.extname(file).toLowerCase()] || 'application/octet-stream';
       const cacheControl = file.endsWith('.html') || file.endsWith('app.js') || file.endsWith('.css')
         ? 'no-cache, must-revalidate'
         : 'public, max-age=300, must-revalidate';
@@ -99,6 +99,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
   const closeRoom = (room, reason) => {
     for (const client of room.clients.values()) {
       send(client, 'ROOM_ENDED', { roomId: room.id, reason });
+      room.chat.forget(client);
       detach(client);
     }
     room.clients.clear();
@@ -110,6 +111,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     if (!room || room.clients.get(ws.id) !== ws) return;
     const id = ws.id;
     const wasPlayer = ws.role === 'PLAYER';
+    room.chat.forget(ws);
     room.clients.delete(id);
     room.spectators = room.spectators.filter(spectator => spectator !== id);
     detach(ws);
@@ -129,12 +131,22 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
       let msg; try { msg = JSON.parse(raw.toString()); } catch { return send(ws, 'ERROR', { message: 'Invalid JSON' }); }
       try {
         if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error('Invalid message');
+        if (msg.type === 'SEND_CHAT') {
+          const room = manager.get(msg.roomId);
+          if (!room) throw new ChatError('CHAT_ROOM_NOT_FOUND', '房间已结束');
+          if (ws.room !== room || room.clients.get(ws.id) !== ws) throw new ChatError('CHAT_NOT_MEMBER', '请先加入这个房间');
+          const { message, duplicate } = room.chat.accept(ws, msg);
+          if (duplicate) return send(ws, 'CHAT_MESSAGE', { roomId: room.id, message });
+          // Chat must never enqueue a game snapshot or release a pending move.
+          for (const client of room.clients.values()) send(client, 'CHAT_MESSAGE', { roomId: room.id, message });
+          return;
+        }
         if (msg.type === 'CREATE_ROOM') {
           if (ws.room) throw new Error('Leave the current room first');
           const id = playerName(msg.playerId);
           const room = manager.create(msg.options);
           room.hostId = id; ws.room = room; ws.id = id; ws.role = 'PLAYER'; room.clients.set(id, ws);
-          return send(ws, 'ROOM_CREATED', { roomId: room.id, state: viewFor(room, ws) });
+          return send(ws, 'ROOM_CREATED', { roomId: room.id, state: viewFor(room, ws), chatHistory: [] });
         }
         const room = manager.get(msg.roomId); if (!room) throw new Error('Room not found');
         if (msg.type === 'JOIN_ROOM') {
@@ -148,7 +160,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           if (role === 'SPECTATOR' && room.spectators.length >= room.options.spectatorSlots) throw new Error('Spectator positions are full');
           ws.room = room; ws.id = id; ws.role = role; room.clients.set(id, ws);
           if (role === 'SPECTATOR') room.spectators.push(id);
-          return broadcast(room, 'ROOM_STATE');
+          return broadcast(room, 'ROOM_STATE', { roomId: room.id, chatHistory: room.chat.history });
         }
         if (ws.room !== room || room.clients.get(ws.id) !== ws) throw new Error('Not a member of this room');
         if (msg.type === 'LEAVE_ROOM') return leaveRoom(ws, true);
@@ -195,7 +207,14 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
         else if (msg.type === 'END_GAME') { room.game.endGame(); return closeRoom(room, 'GAME_ENDED'); }
         else throw new Error('Unknown message type');
         broadcast(room, 'ROOM_STATE', coinAction ? { coinAction } : {});
-      } catch (error) { send(ws, 'ERROR', { message: error.message }); }
+      } catch (error) {
+        if (msg?.type === 'SEND_CHAT') return send(ws, 'CHAT_ERROR', {
+          roomId: typeof msg.roomId === 'string' ? msg.roomId : null,
+          clientMessageId: typeof msg.clientMessageId === 'string' ? msg.clientMessageId : null,
+          code: error.code || 'CHAT_INVALID_MESSAGE', message: error.message
+        });
+        send(ws, 'ERROR', { message: error.message });
+      }
     });
     ws.on('close', () => leaveRoom(ws));
   });

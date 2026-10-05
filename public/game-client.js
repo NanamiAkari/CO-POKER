@@ -20,6 +20,11 @@
     let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
     let receivedResultKey='', liveSkipState=null;
     const retiredResultKeys=new Set();
+    const chat=window.RoomChat.create({Vue,roomId,playerId,connected,send(payload){
+      if(!socket||socket.readyState!==WebSocket.OPEN)return false;
+      socket.send(JSON.stringify(payload));return true;
+    }});
+    if(window.innerWidth<1100)chat.chatOpen.value=false;
     const isHost=computed(()=>state.hostId===playerId.value);
     const isResult=computed(()=>Boolean(state.result));
     const resultPresented=computed(()=>['summary','table'].includes(presentation.value));
@@ -112,6 +117,7 @@
         '累计三胜或三负后，整场结束。全员选择“再来一场”会将成功、失败计数归零。观战者不参与确认。',
         '历史硬币显示每个已完成轮次锁定的选择。房主可设为所有人可见、仅本人可见、全部隐藏；历史选择不能修改，也不计入结算。',
         '观战者只能查看公共信息；在最终揭示前不能看到玩家手牌，也不能拿取或抢夺硬币。',
+        '房间聊天对同桌所有玩家和观战者公开。可发送文字和 emoji；Enter 发送，Shift+Enter 换行。',
         '当前版本中，开局后的玩家主动离开或掉线会结束房间，其他人返回主菜单。观战者离开不影响牌局。'
       ],note:'个人设置里的音效、减少动态效果和演出速度只影响自己的观看体验，不改变游戏规则。'}
     ];
@@ -180,7 +186,7 @@
       }
     }
     function trapFocus(event){if(event.key==='Escape'&&inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
-    function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
+    function resize(){const chatWidth=window.innerWidth>=1100?320:0;scale.value=Math.min((window.innerWidth-chatWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
     async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();resize();}catch{notify('当前浏览器不支持全屏',true);}}
     function copyRoomLegacy(text){
       // HTTP origins do not expose Clipboard API. Keep this path synchronous
@@ -219,6 +225,8 @@
       else notify(`无法自动复制，请手动复制房间号：${code}`,true);
     }
     function resetRoom(text=''){
+      chat.resetChat();
+      if(window.innerWidth<1100)chat.chatOpen.value=false;
       completedComparisonCount.value=0;closeComparisonDetail();
       generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
       receivedResultKey='';liveSkipState=null;retiredResultKeys.clear();for(const finish of [...comparisonWaiters])finish();
@@ -242,13 +250,14 @@
       ws.onmessage=event=>{
         if(serial!==socketSerial)return;
         let msg;try{msg=JSON.parse(event.data);}catch{return;}
+        if(msg.type==='CHAT_MESSAGE'||msg.type==='CHAT_ERROR'){chat.handleChatMessage(msg);return;}
         if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
         if(msg.state){
           // A vote is live room metadata, not another queued animation step.
           // Update its count immediately even while playReveal is awaiting.
           if(!receiveSkipState(msg.state))return;
-          if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
+          if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;chat.handleChatMessage(msg);const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
         }
       };
       ws.onerror=()=>{unlock();notify('暂时连接不上牌桌，请稍后重试',true);};
@@ -325,9 +334,9 @@
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
-    onMounted(()=>{resize();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
+    onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...chat,...Art};
   }});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
   app.config.errorHandler=error=>{console.error(error);const boot=document.getElementById('boot-status');if(boot&&!boot.hidden)boot.textContent='牌桌未能加载，请刷新页面。';};

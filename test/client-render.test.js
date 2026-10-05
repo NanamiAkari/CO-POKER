@@ -10,6 +10,7 @@ const Art = require('../public/tabletop-art');
 const SettlementDetails = require('../public/settlement-details');
 const HandHighlights = require('../public/hand-highlights');
 const { findBestHand } = require('../src/poker');
+const RoomChat = require('../public/room-chat');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -24,7 +25,7 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, HandHighlights, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
     localStorage: { getItem: () => null, setItem() {} },
     ...timers, console
@@ -53,6 +54,31 @@ test('actual Vue menu and settings templates render without missing bindings', a
   assert.match(settings, /role="dialog"/);
   assert.match(settings, /桌面音效/);
   assert.match(settings, /演出节奏/);
+});
+
+test('room chat renders text and emoji safely while table actions are busy', async () => {
+  const content='<img src=x onerror=alert(1)> 大家好 😀';
+  const output=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';v.roomId.value='ABC123';v.busy.value=true;v.pending.value=true;
+    v.chatDraft.value='继续 👍';
+    v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:1,playerId:'B',role:'PLAYER',kind:'text',text:content,timestamp:1,clientMessageId:'test-1'}});
+    assert.equal(v.chatCanSend.value,true,'game action locks must not lock chat');
+    assert.equal(v.pending.value,true,'chat must not acknowledge a game action');
+  });
+  assert.match(output,/aria-label="聊天消息"/);
+  assert.match(output,/&lt;img src=x onerror=alert\(1\)&gt; 大家好 😀/);
+  assert.doesNotMatch(output,/<img src=x/);
+  assert.match(output,/选择 emoji/);
+  const empty=await renderScreen(v=>{v.inRoom.value=true;v.chatPanel.value='stickers';});
+  assert.match(empty,/暂无表情包/);
+  const folded=await renderScreen(v=>{
+    v.inRoom.value=true;v.roomId.value='ABC123';v.playerId.value='A';v.toggleChat();
+    v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:1,playerId:'B',role:'SPECTATOR',kind:'text',text:'观战中',timestamp:1}});
+    assert.equal(v.chatUnread.value,1);
+  });
+  assert.match(folded,/aria-label="打开房间聊天"/);
+  assert.match(folded,/class="chat-unread">1</);
+  assert.doesNotMatch(folded,/id="room-chat-panel"/);
 });
 
 test('host can render the post-round room rules panel', async () => {

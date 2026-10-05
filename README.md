@@ -39,17 +39,28 @@ npm start
 
 “跳过全部比较”固定在比较框外，已同意人数实时同步；全员同意后跳过全部剩余比较，最大牌组选取演出仍完整保留。“查看牌桌 / 查看结算”在同一位置切换，累计次数不变；已移除“重看比较”按钮。
 
+## 房间聊天
+
+房间内玩家和观战者都可发送文字或基础 emoji，消息向当前房间全体成员公开。Enter 发送，Shift+Enter 换行；emoji 面板会把选中的表情插入光标位置，点击发送才发出。发牌与结算期间也能聊天。可收起面板并查看未读消息数，开合不改变牌桌尺寸。
+
+每条最多 200 个 Unicode 码点，服务器保留当前房间最近 100 条；下一局继续保留，后加入者可见。房间结束或服务器重启后不再保留聊天记录。发送失败保留草稿，支持重试。
+
+表情包暂无素材，面板显示“暂无表情包”。以后将素材加入 `public/stickers/` 并更新 `catalog.json`，选择表情包会直接发送独立消息，不写入文字框。参见该目录的 README。
+
 ## 文件结构
 
 | 文件 | 用途 |
 | --- | --- |
 | `public/index.html` | 当前 Vue 主菜单与牌桌模板 |
 | `public/game-client.js` | 联机快照、操作、偏好、发牌及结算演出 |
+| `public/room-chat.js`、`public/room-chat.css` | 房间聊天、emoji 输入、未读消息及聊天栏 |
+| `public/stickers/catalog.json` | 表情包清单，当前为空 |
 | `public/game.css` | 当前界面样式 |
 | `public/tabletop-art.js` | 无外部依赖的 SVG 牌面、牌背、硬币；兼容浏览器与 CommonJS |
 | `public/settlement.css`、`public/settlement-details.js` | 结算顺序带、局部结果标记、悬浮牌组详情与比较原因 |
 | `public/vendor/vue.global.prod.js` | 本地 Vue 运行时 |
 | `src/poker.js`、`src/game.js`、`src/server.js` | 牌型、状态机、HTTP／WebSocket 房间服务 |
+| `src/chat.js` | 聊天校验、历史、幂等回执和消息频率限制 |
 | `test/` | 规则、通信、静态资源和美术模块测试 |
 | `deploy/publish.ps1` | 发布预览、上传、哈希核验和备份 |
 
