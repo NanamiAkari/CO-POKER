@@ -1,1 +1,5 @@
-.skip-comparison{position:absolute;right:22px;bottom:18px;padding:8px 14px;border:1px solid #d4b47280;border-radius:999px;background:#10251ddd;color:#e8ce91;font-size:12px;transition:background .2s,transform .2s}.skip-comparison:hover:not(:disabled){background:#3a553c;transform:translateY(-2px)}.skip-comparison:disabled{opacity:.55;cursor:default}.skip-comparison small{margin-left:4px;color:#a6bb9f;font-size:10px}
+.skip-comparison{position:absolute;right:110px;top:545px;z-index:23;min-width:188px;min-height:36px;display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 16px;border:1px solid #d4b47280;border-radius:999px;background:#10251df5;color:#e8ce91;font-size:12px;box-shadow:0 4px 16px #0004;transition:background .2s,border-color .2s}
+.skip-comparison:hover:not(:disabled){background:#3a553c;border-color:#d4b472}
+.skip-comparison:focus-visible{outline:2px solid #f2d58f;outline-offset:4px}
+.skip-comparison:disabled{opacity:1;cursor:default;color:#b9c9b3;border-color:#85a28780;background:#18392ef5}
+.skip-comparison small{min-width:28px;color:#d3e0c9;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}

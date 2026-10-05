@@ -220,7 +220,10 @@ test('settlement can hide the result to inspect the final table and restore it',
     v.presentation.value = 'summary';
     Object.assign(v.state, fixture);
   });
-  assert.match(summary, /隐藏结算/);
+  assert.match(summary, /aria-label="查看牌桌"/);
+  assert.doesNotMatch(summary, /重看比较|隐藏结算/);
+  assert.equal((summary.match(/class="settlement-toggle"/g)||[]).length,1);
+  assert.equal((table.match(/class="settlement-toggle"/g)||[]).length,1);
   assert.match(summary, /aria-label="本局结算"/);
   assert.match(table, /settlement-scene table-review/);
   assert.match(table, /aria-label="查看结算"/);
@@ -231,6 +234,7 @@ test('settlement can hide the result to inspect the final table and restore it',
   assert.equal(view.presentation.value, 'summary');
   view.showFinalTable();
   assert.equal(view.presentation.value, 'table');
+  assert.equal(view.displayedFailureCount.value,fixture.failureCount,'reviewing the table must retain the settled score');
 });
 
 test('comparison playback completes every pair after a failure, then unlocks the summary; replay resets review state', async () => {
@@ -303,12 +307,18 @@ test('two to five players show one icon-only review marker between each adjacent
   }
 });
 
-test('skip comparison control appears only during comparison and requires all-player state', async () => {
+test('one persistent skip control stays outside every animation panel and displays the vote count', async () => {
   const base={phase:'SETTLEMENT',players:[{id:'A',currentCoin:2},{id:'B',currentCoin:1}],result:{success:false,comparisons:[{higherCoin:2,lowerCoin:1,higherPlayerId:'A',lowerPlayerId:'B',passed:false,comparison:1}]},finalHands:[]};
-  const compare=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,base);});
-  assert.match(compare,/跳过全部比较/);assert.match(compare,/0\/2/);
+  for(const stage of ['hold','select','compare','gap']){
+    const output=await renderScreen(v=>{v.inRoom.value=true;v.connected.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value=stage;Object.assign(v.state,base);});
+    assert.match(output,/跳过全部比较/);assert.match(output,/0\/2/);
+    assert.equal((output.match(/class="skip-comparison"/g)||[]).length,1);
+    for(const panel of output.matchAll(/<section[^>]*class="stage-center[^>]*>[\s\S]*?<\/section>/g))assert.doesNotMatch(panel[0],/skip-comparison/);
+  }
   const voted=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='compare';Object.assign(v.state,{...base,comparisonSkipVotes:['A']});});
-  assert.match(voted,/等待其他玩家/);assert.match(voted,/1\/2/);
-  const select=await renderScreen(v=>{v.inRoom.value=true;v.role.value='PLAYER';v.playerId.value='A';v.presentation.value='select';Object.assign(v.state,base);});
-  assert.doesNotMatch(select,/跳过(?:全部)?比较/);
+  assert.match(voted,/已选择跳过/);assert.match(voted,/1\/2/);
+  for(const [role,stage] of [['SPECTATOR','compare'],['PLAYER','summary'],['PLAYER','table']]){
+    const output=await renderScreen(v=>{v.inRoom.value=true;v.role.value=role;v.presentation.value=stage;Object.assign(v.state,base);});
+    assert.doesNotMatch(output,/class="skip-comparison"/);
+  }
 });

@@ -6,8 +6,9 @@
    result. */
 .settlement-scene.table-review .opponents{visibility:visible;pointer-events:auto}
 .settlement-scene.table-review .board,.settlement-scene.table-review .deck,.settlement-scene.table-review .phase-track{opacity:1;pointer-events:auto}
-.settlement-toggle{position:absolute;right:104px;top:205px;z-index:24;padding:9px 18px;border:1px solid #d7b566;border-radius:999px;background:#1d342c;color:#f2d58f;font-size:12px;letter-spacing:1px;box-shadow:0 8px 22px #0009;transition:transform .2s,background .2s}
-.settlement-toggle:hover{transform:translateY(-2px);background:#2c543e}
+.settlement-toggle{position:absolute;left:136px;top:440px;width:215px;height:34px;z-index:23;display:grid;place-items:center;padding:0 12px;border:1px solid #bda56670;border-radius:999px;background:#17372d;color:#ead7a6;font-size:12px;letter-spacing:1px;box-shadow:0 3px 12px #0003;transition:background .2s,border-color .2s,box-shadow .2s}
+.settlement-toggle:hover{background:#2c543e;border-color:#d7b566;box-shadow:0 3px 15px #0005}
+.settlement-toggle:focus-visible{outline:2px solid #f2d58f;outline-offset:4px}
 .settlement-order{position:absolute;left:105px;right:105px;top:91px;height:110px;z-index:13;padding:12px 24px;background:linear-gradient(120deg,#19392fe8,#102b25e8);border:1px solid #b99b604f;border-radius:14px;box-shadow:0 8px 24px #0003}
 .order-heading{display:flex;align-items:center;justify-content:space-between;color:#a7b5a1;font-size:11px;letter-spacing:2px}
 .order-heading span:first-child{color:#d7c398}
@@ -30,7 +31,7 @@
 .complete.failed .marker-verdict{border-color:#d397837a;background:#6b3930;color:#f3b8a7}
 .settlement-scene .stage-center{top:225px;height:300px}
 .settlement-scene .summary-center{top:225px;height:300px;grid-template-columns:240px 1fr}
-.settlement-scene .summary-left{padding:0 24px 0 0}
+.settlement-scene .summary-left{align-self:stretch;display:flex;flex-direction:column;justify-content:flex-start;padding:16px 24px 60px 0}
 .settlement-scene .result-seal{width:45px;height:45px;font-size:25px;margin-bottom:8px}
 .settlement-scene .summary-left h3{font-size:21px;margin-bottom:8px}
 .settlement-scene .summary-right .five-cards .playing-card{width:61px;height:86px}

@@ -16,20 +16,24 @@
     const notice=ref(''), noticeError=ref(false);
     const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2});
-    let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, audioContext;
+    let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext;
     let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
+    let receivedResultKey='', liveSkipState=null;
+    const retiredResultKeys=new Set();
     const isHost=computed(()=>state.hostId===playerId.value);
     const isResult=computed(()=>Boolean(state.result));
-    const displayedSuccessCount=computed(()=>Math.max(0,state.successCount-(state.result?.success&&presentation.value!=='summary'?1:0)));
-    const displayedFailureCount=computed(()=>Math.max(0,state.failureCount-(state.result&&!state.result.success&&presentation.value!=='summary'?1:0)));
+    const resultPresented=computed(()=>['summary','table'].includes(presentation.value));
+    const displayedSuccessCount=computed(()=>Math.max(0,state.successCount-(state.result?.success&&!resultPresented.value?1:0)));
+    const displayedFailureCount=computed(()=>Math.max(0,state.failureCount-(state.result&&!state.result.success&&!resultPresented.value?1:0)));
     const handCount=computed(()=>state.options?.handCardCount || 2);
     const opponents=computed(()=>state.players.filter(p=>p.id!==playerId.value));
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!pending.value&&!busy.value&&COIN_PHASES.includes(state.phase));
     const canTakeCoin=computed(()=>canAct.value&&myCoin.value===null);
-    const canSkipComparison=computed(()=>role.value==='PLAYER'&&presentation.value==='compare'&&Boolean(state.result)&&!state.comparisonSkip);
+    const showSkipComparison=computed(()=>role.value==='PLAYER'&&Boolean(state.result)&&['hold','select','gap','compare'].includes(presentation.value));
     const hasSkippedComparison=computed(()=>state.comparisonSkipVotes.includes(playerId.value));
+    const canSkipComparison=computed(()=>showSkipComparison.value&&connected.value&&!pending.value&&!hasSkippedComparison.value&&!state.comparisonSkip);
     const confirmed=computed(()=>state.rematchConfirmed.includes(playerId.value));
     const communitySlots=computed(()=>Array.from({length:5},(_,i)=>state.communityCards[i] || null));
     const phases=['发牌','翻牌','转牌','河牌','揭示'];
@@ -108,11 +112,39 @@
     const isChosen=(entry,card)=>entry.hand.cards.some(c=>cardKey(c)===cardKey(card));
     const cardHighlight=(hand,card)=>hand&&card&&Number.isInteger(hand.category)&&Highlights?Highlights.getHighlights(hand).find(item=>item.card.rank===card.rank&&item.card.suit===card.suit):null;
     const timings=()=>prefs.pace==='relaxed'?{select:3000,compare:5600,gap:1000,hold:1700}:{select:2300,compare:4300,gap:800,hold:1200};
-    const skipRequested=ref(false), skipWaiters=new Set();
-    const sleep=ms=>{if(skipRequested.value){skipRequested.value=false;return Promise.resolve();}return new Promise(resolve=>{let timer;const finish=()=>{skipWaiters.delete(finish);clearTimeout(timer);resolve();};skipWaiters.add(finish);timer=setTimeout(finish,ms);});};
+    const comparisonWaiters=new Set();
+    const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+    const waitForComparison=ms=>state.comparisonSkip?Promise.resolve():new Promise(resolve=>{let timer;const finish=()=>{comparisonWaiters.delete(finish);clearTimeout(timer);resolve();};comparisonWaiters.add(finish);timer=setTimeout(finish,ms);});
     const live=epoch=>epoch===generation && inRoom.value;
     function notify(text,error=false){clearTimeout(noticeTimer);notice.value=text;noticeError.value=error;noticeTimer=setTimeout(()=>notice.value='',5000);}
-    function unlock(){pending.value=false;clearTimeout(pendingTimer);}
+    function unlock(){pending.value=false;pendingCommand=null;clearTimeout(pendingTimer);}
+    const resultKey=snapshot=>snapshot.result?JSON.stringify([snapshot.roomId||roomId.value,snapshot.successCount,snapshot.failureCount,snapshot.finalHands,snapshot.result]):'';
+    function applyLiveSkip(){
+      if(!liveSkipState||liveSkipState.key!==resultKey(state))return;
+      state.comparisonSkipVotes=[...liveSkipState.votes];
+      state.comparisonSkip=liveSkipState.completed;
+      if(pendingCommand==='SKIP_COMPARISON'&&state.comparisonSkipVotes.includes(playerId.value))unlock();
+      // Only comparison waits are interruptible. A slower client must still
+      // finish every player's hand-selection sequence after unanimous votes.
+      if(state.comparisonSkip)for(const finish of [...comparisonWaiters])finish();
+    }
+    function receiveSkipState(snapshot){
+      const key=resultKey(snapshot);
+      if(key&&retiredResultKeys.has(key))return false;
+      if(key!==receivedResultKey){
+        if(receivedResultKey)retiredResultKeys.add(receivedResultKey);
+        receivedResultKey=key;
+        liveSkipState=key?{key,votes:[],completed:false}:null;
+      }
+      if(liveSkipState){
+        // Votes cannot be withdrawn within one result. Retain the latest votes
+        // when older presentation snapshots eventually leave the queue.
+        liveSkipState.votes=[...new Set([...liveSkipState.votes,...(snapshot.comparisonSkipVotes||[])])];
+        liveSkipState.completed ||= Boolean(snapshot.comparisonSkip);
+        applyLiveSkip();
+      }
+      return true;
+    }
     function tone(kind='coin') {
       if(!prefs.sound)return;
       try {
@@ -182,13 +214,14 @@
     function resetRoom(text=''){
       completedComparisonCount.value=0;closeComparisonDetail();
       generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
+      receivedResultKey='';liveSkipState=null;retiredResultKeys.clear();for(const finish of [...comparisonWaiters])finish();
       if(socket){socket.onclose=null;socket.close();socket=null;}connected.value=false;
       if(text)notify(text);
     }
     function command(type,extra={}) {
       if(pending.value)return;
       if(!socket||socket.readyState!==WebSocket.OPEN){notify('连接已断开，请返回主菜单重新入座',true);return;}
-      pending.value=true;pendingTimer=setTimeout(()=>{unlock();notify('操作等待超时，请检查连接',true);},8000);
+      pending.value=true;pendingCommand=type;pendingTimer=setTimeout(()=>{unlock();notify('操作等待超时，请检查连接',true);},8000);
       socket.send(JSON.stringify({type,roomId:roomId.value,...extra}));
     }
     function connectAndSend(payload){
@@ -205,15 +238,9 @@
         if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
         if(msg.state){
-          // Apply the all-player skip flag before the queued presentation runs.
-          // This releases an in-flight comparison immediately while leaving the
-          // preceding hand-selection animation intact.
-          if(msg.state.comparisonSkip){
-            state.comparisonSkip=true;
-            state.comparisonSkipVotes=msg.state.comparisonSkipVotes || state.comparisonSkipVotes;
-            skipRequested.value=true;
-            for(const finish of [...skipWaiters])finish();
-          }
+          // A vote is live room metadata, not another queued animation step.
+          // Update its count immediately even while playReveal is awaiting.
+          if(!receiveSkipState(msg.state))return;
           if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
         }
       };
@@ -228,6 +255,7 @@
     function takeCoin(coin){if(canTakeCoin.value)command('MOVE_COIN',{coin});}
     function returnCoin(coin){if(canAct.value)command('RETURN_COIN',{coin});}
     function stealCoin(coin,id){if(canAct.value)command('MOVE_COIN',{coin,fromPlayerId:id});}
+    function requestComparisonSkip(){if(canSkipComparison.value)command('SKIP_COMPARISON');}
     function captureCoins(){const map=new Map();document.querySelectorAll('[data-live-coin]').forEach(el=>map.set(Number(el.dataset.liveCoin),el.getBoundingClientRect()));return map;}
     async function animateMoves(before,epoch){
       await nextTick();if(!live(epoch)||prefs.reducedMotion)return;
@@ -246,6 +274,7 @@
     async function present(msg,epoch){
       if(!live(epoch))return;
       const next=msg.state,oldPhase=state.phase,stageChange=oldPhase!==next.phase;
+      if(next.result&&retiredResultKeys.has(resultKey(next)))return;
       const before=captureCoins();busy.value=true;
       // The final coin must reach its player before a reset/reveal replaces the table.
       if(msg.coinAction&&stageChange&&COIN_PHASES.includes(oldPhase)){
@@ -254,14 +283,15 @@
         await animateMoves(before,epoch);tone('coin');await sleep(timings().hold);if(!live(epoch))return;
       }
       const newHand=next.phase==='ROUND_1_COINS'&&oldPhase!==next.phase;
-      Object.assign(state,next);unlock();
+      const incoming=liveSkipState?.key===resultKey(next)?{...next,comparisonSkip:liveSkipState.completed,comparisonSkipVotes:[...liveSkipState.votes]}:next;
+      Object.assign(state,incoming);applyLiveSkip();unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
       if(newHand){presentation.value='deal';await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
       else if(msg.coinAction&&!stageChange){await animateMoves(before,epoch);tone('coin');}
       else if(stageChange&&!next.result&&COIN_PHASES.includes(next.phase)){tone('card');await sleep(prefs.reducedMotion?300:1450);}
       if(!live(epoch))return;
       if(next.result){
-        const key=JSON.stringify([next.successCount,next.failureCount,next.finalHands,next.result]);
+        const key=resultKey(next);
         if(key!==lastResultKey){lastResultKey=key;await playReveal(epoch);}
       } else presentation.value='idle';
       if(live(epoch))busy.value=false;
@@ -275,20 +305,22 @@
         presentation.value='gap';await sleep(500);if(!live(epoch))return;
       }
       for(let i=0;i<(state.result?.comparisons.length || 0);i++){
-        if(state.comparisonSkip){completedComparisonCount.value=state.result.comparisons.length;presentation.value='summary';break;}
-        compareIndex.value=i;verdictVisible.value=false;presentation.value='compare';await sleep(1700);if(!live(epoch))return;
-        if(state.comparisonSkip){completedComparisonCount.value=state.result.comparisons.length;presentation.value='summary';break;}
-        verdictVisible.value=true;tone(comparison.value.passed?'win':'card');await sleep(timings().compare-1700);if(!live(epoch))return;
+        if(state.comparisonSkip)break;
+        compareIndex.value=i;verdictVisible.value=false;presentation.value='compare';await waitForComparison(1700);if(!live(epoch))return;
+        if(state.comparisonSkip)break;
+        verdictVisible.value=true;tone(comparison.value.passed?'win':'card');await waitForComparison(timings().compare-1700);if(!live(epoch))return;
+        if(state.comparisonSkip)break;
         completedComparisonCount.value=i+1;
-        presentation.value='gap';await sleep(timings().gap);if(!live(epoch))return;
+        presentation.value='gap';await waitForComparison(timings().gap);if(!live(epoch))return;
       }
+      completedComparisonCount.value=state.result?.comparisons.length || 0;
       presentation.value='summary';tone(state.result?.success?'win':'card');
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
     onMounted(()=>{resize();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,canSkipComparison,hasSkippedComparison,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...Art};
   }});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
   app.config.errorHandler=error=>{console.error(error);const boot=document.getElementById('boot-status');if(boot&&!boot.hidden)boot.textContent='牌桌未能加载，请刷新页面。';};

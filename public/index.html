@@ -8,10 +8,10 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/game.css?v=20260930b">
   <link rel="stylesheet" href="/rules.css?v=20260930b">
-  <link rel="stylesheet" href="/settlement.css?v=0.3.3">
+  <link rel="stylesheet" href="/settlement.css?v=20261005-controls">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
-  <link rel="stylesheet" href="/skip-comparison.css?v=20261004a">
+  <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -113,14 +113,15 @@
           </section>
           <section v-else-if="presentation==='compare'&&comparison" class="stage-center" :key="'compare'+compareIndex" aria-label="相邻牌组比较">
             <div class="comparison-row"><article v-for="(entry,i) in compareEntries" :key="entry.playerId" class="comparison-side"><div v-if="i===1" class="compare-symbol" style="position:absolute;left:calc(50% - 20px);top:112px">{{verdictVisible?comparisonSymbol:'⋯'}}</div><div class="comparison-name"><img :src="coinImage(entry.coin)" :alt="`硬币${entry.coin}`"><span>{{entry.playerId}}</span></div><div class="five-cards"><playing-card v-for="card in entry.hand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(entry.hand,card)"></playing-card></div><div class="hand-label">{{entry.hand.categoryName}}</div></article></div>
-            <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div><button class="skip-comparison" :disabled="!canSkipComparison||hasSkippedComparison" @click="command('SKIP_COMPARISON')">{{hasSkippedComparison?'等待其他玩家…':'跳过全部比较'}} <small>{{state.comparisonSkipVotes.length}}/{{state.players.length}}</small></button>
+            <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div>
           </section>
           <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
-            <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button><button class="text-button" @click="showFinalTable">隐藏结算</button><button class="text-button" @click="replayReveal">↻ 重看比较</button></div></div>
+            <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
             <div class="summary-right"><div class="summary-tabs"><button v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :class="{active:summaryIndex===i}" :aria-label="`查看 ${entry.playerId} 的最大牌组`" @click="summaryIndex=i"><img :src="coinImage(entry.coin)" alt=""></button></div><div v-if="summaryEntry"><div class="summary-name">{{summaryEntry.playerId}}</div><div class="five-cards"><playing-card v-for="card in summaryEntry.hand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(summaryEntry.hand,card)"></playing-card></div><div class="hand-label">{{summaryEntry.hand.categoryName}}</div></div><p class="record-help">悬停或点击上方比较标记，查看详细结果</p></div>
           </section>
         </transition>
-        <button v-if="isResult&&presentation==='table'" class="settlement-toggle" @click="showSettlementSummary" aria-label="查看结算">查看结算</button>
+        <button v-if="showSkipComparison" class="skip-comparison" :disabled="!canSkipComparison" @click="requestComparisonSkip"><span>{{hasSkippedComparison?'已选择跳过':'跳过全部比较'}}</span><small aria-live="polite" aria-atomic="true">{{state.comparisonSkipVotes.length}}/{{state.players.length}}</small></button>
+        <button v-if="isResult&&['summary','table'].includes(presentation)" class="settlement-toggle" @click="presentation==='table'?showSettlementSummary():showFinalTable()" :aria-label="presentation==='table'?'查看结算':'查看牌桌'">{{presentation==='table'?'查看结算':'查看牌桌'}}</button>
         <transition name="fade">
           <aside v-if="inspectedComparison&&comparisonDetail" id="comparison-detail" class="comparison-detail" role="tooltip" aria-label="比较详情" @mouseenter="keepComparisonDetail" @mouseleave="leaveComparisonDetail" @keydown.esc.stop.prevent="closeComparisonDetail">
             <button class="detail-close" aria-label="关闭比较详情" @click="closeComparisonDetail">×</button>
@@ -170,6 +171,6 @@
 <script src="/tabletop-art.js?v=20260930a"></script>
 <script src="/hand-highlights.js?v=20261005a"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/game-client.js?v=0.3.3"></script>
+<script src="/game-client.js?v=20261005-controls"></script>
 </body>
 </html>
