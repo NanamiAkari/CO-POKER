@@ -7,7 +7,7 @@ const { GameRoom, PHASES } = require('./game');
 
 function validateOptions(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid room options');
-  const options = { handCardCount: 2, handUsageRule: 'any', historyVisibility: 'all', spectatorSlots: 0 };
+  const options = { handCardCount: 2, handUsageRule: 'any', historyVisibility: 'all', includeJokers: false, spectatorSlots: 0 };
   for (const key of Object.keys(input)) {
     if (!Object.prototype.hasOwnProperty.call(options, key)) throw new Error(`Unknown room option: ${key}`);
     options[key] = input[key];
@@ -15,6 +15,7 @@ function validateOptions(input = {}) {
   if (![2, 3].includes(options.handCardCount)) throw new Error('handCardCount must be 2 or 3');
   if (!['any', 'all-hole'].includes(options.handUsageRule)) throw new Error('Invalid handUsageRule');
   if (!['all', 'self', 'none'].includes(options.historyVisibility)) throw new Error('Invalid historyVisibility');
+  if (typeof options.includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
   if (!Number.isInteger(options.spectatorSlots) || options.spectatorSlots < 0 || options.spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
   return options;
 }

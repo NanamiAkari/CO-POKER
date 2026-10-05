@@ -75,13 +75,13 @@ test('broadcasts coin movement metadata for client flight animations', async () 
 
 test('validates room options and publishes authoritative menu state', async t => {
   const f = await fixture(t); const host = await f.connect();
-  for (const options of [{handCardCount:4}, {handCardCount:'3'}, {handUsageRule:'bad'}, {historyVisibility:'bad'}, {spectatorSlots:-1}, {spectatorSlots:9}, {spectatorSlots:0.5}, {players:['injected']}, null]) {
+  for (const options of [{handCardCount:4}, {handCardCount:'3'}, {handUsageRule:'bad'}, {historyVisibility:'bad'}, {spectatorSlots:-1}, {spectatorSlots:9}, {spectatorSlots:0.5}, {includeJokers:null}, {includeJokers:'true'}, {includeJokers:1}, {players:['injected']}, null]) {
     assert.equal((await host.request({type:'CREATE_ROOM', playerId:'a', options}, 'ERROR')).type, 'ERROR');
     assert.equal(f.server.manager.rooms.size, 0);
   }
   const options = {handCardCount:3, handUsageRule:'all-hole', historyVisibility:'self', spectatorSlots:8};
   const result = await host.request({type:'CREATE_ROOM', playerId:'a', options}, 'ROOM_CREATED');
-  assert.deepEqual(result.state.options, options);
+  assert.deepEqual(result.state.options, { ...options, includeJokers: false });
   assert.equal(result.state.hostId, 'a');
   assert.equal(result.state.successCount, 0); assert.equal(result.state.failureCount, 0);
   assert.deepEqual(result.state.rematchConfirmed, []);
@@ -199,10 +199,89 @@ test('only the host can update validated room options after GAME_OVER', async t 
   assert.match(denied.message, /Only host/);
   const updated = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',spectatorSlots:4}}, 'ROOM_OPTIONS_UPDATED');
   await r.guest.next('ROOM_OPTIONS_UPDATED');
-  assert.deepEqual(updated.state.options, {handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',spectatorSlots:4});
+  assert.deepEqual(updated.state.options, {handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',includeJokers:false,spectatorSlots:4});
   assert.equal(updated.state.successCount, 0); assert.equal(updated.state.failureCount, 0);
   assert.deepEqual(updated.state.rematchConfirmed, []);
   assert.equal(f.server.manager.get(r.roomId).game.handCardCount, 3);
+});
+
+test('joker rules, private deals, settlement, and next-game changes synchronize to players and spectators', async t => {
+  const f = await fixture(t);
+  const options = { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: true, spectatorSlots: 1 };
+  const host = await f.connect();
+  const created = await host.request({ type: 'CREATE_ROOM', playerId: 'a', options }, 'ROOM_CREATED');
+  assert.deepEqual(created.state.options, options);
+  const roomId = created.roomId;
+  const guest = await f.connect();
+  const joined = await guest.request({ type: 'JOIN_ROOM', playerId: 'b', roomId }, 'ROOM_STATE');
+  assert.deepEqual(joined.state.options, options);
+  assert.deepEqual((await host.next('ROOM_STATE')).state.options, options);
+  const spectator = await f.connect();
+  const watching = await spectator.request({ type: 'JOIN_ROOM', playerId: 'watcher', role: 'SPECTATOR', roomId }, 'ROOM_STATE');
+  assert.deepEqual(watching.state.options, options);
+  await host.next('ROOM_STATE'); await guest.next('ROOM_STATE');
+  const r = { host, guest, roomId };
+  const started = await f.start(r); await spectator.next('GAME_STARTED');
+  assert.deepEqual(started.state.options, options);
+  const room = f.server.manager.get(roomId);
+  assert.equal(room.game.deck.length, 48);
+  assert.equal(room.game.includeJokers, true);
+  // A deterministic visible deal exercises the network privacy boundary and
+  // joker resolution without relying on a random chance of drawing a joker.
+  room.game.players[0].holeCards = [{ joker: 'red' }, { rank: 14, suit: 'c' }, { rank: 7, suit: 's' }];
+  room.game.players[1].holeCards = [{ rank: 2, suit: 'h' }, { rank: 9, suit: 'd' }, { rank: 10, suit: 'c' }];
+  room.game.deck = [{ joker: 'black' }, { rank: 14, suit: 'h' }, { rank: 7, suit: 'd' }, { rank: 3, suit: 's' }, { rank: 4, suit: 'c' }];
+  room.game.successCount = 2; room.game.failureCount = 2;
+  const privateDeal = await host.request({ type: 'MOVE_COIN', coin: 1, roomId }, 'ROOM_STATE');
+  const guestDeal = await guest.next('ROOM_STATE');
+  const spectatorDeal = await spectator.next('ROOM_STATE');
+  assert.deepEqual(privateDeal.state.ownHoleCards[0], { joker: 'red' });
+  for (const message of [guestDeal, spectatorDeal]) {
+    assert.ok(!JSON.stringify(message.state).includes('joker'));
+    assert.deepEqual(message.state.finalHands, []);
+    assert.deepEqual(message.state.communityCards, []);
+  }
+  assert.deepEqual(spectatorDeal.state.ownHoleCards, []);
+  const flop = await guest.request({ type: 'MOVE_COIN', coin: 2, roomId }, 'ROOM_STATE');
+  const hostFlop = await host.next('ROOM_STATE');
+  const watchedFlop = await spectator.next('ROOM_STATE');
+  assert.deepEqual(flop.state.communityCards[0], { joker: 'black' });
+  assert.deepEqual(hostFlop.state.communityCards[0], { joker: 'black' });
+  assert.deepEqual(watchedFlop.state.communityCards[0], { joker: 'black' });
+  assert.ok(hostFlop.state.ownEstimatedHand.cards.some(card => card.joker === 'red' && ['d', 'h'].includes(card.suit)));
+  assert.ok(!JSON.stringify(flop.state).includes('"joker":"red"'));
+  assert.equal(watchedFlop.state.ownEstimatedHand, null);
+  assert.deepEqual(watchedFlop.state.players.map(player => player.coinHistory), [[], []]);
+  let final;
+  for (let round = 1; round < 4; round++) {
+    final = await f.coinRound(r); await spectator.next('ROOM_STATE'); await spectator.next('ROOM_STATE');
+  }
+  assert.equal(final.state.phase, 'GAME_OVER');
+  assert.equal(final.state.finalHands.length, 2);
+  assert.equal(final.state.result.comparisons.length, 1);
+  const revealed = final.state.finalHands.find(hand => hand.playerId === 'a');
+  assert.deepEqual(revealed.holeCards[0], { joker: 'red' });
+  assert.ok(revealed.hand.cards.some(card => card.joker === 'red' && ['d', 'h'].includes(card.suit)));
+  const denied = await guest.request({ type: 'UPDATE_ROOM_OPTIONS', roomId, options: { includeJokers: false } }, 'ERROR');
+  assert.match(denied.message, /Only host/);
+  for (const includeJokers of [null, 'false', 0, []]) {
+    const invalid = await host.request({ type: 'UPDATE_ROOM_OPTIONS', roomId, options: { includeJokers } }, 'ERROR');
+    assert.match(invalid.message, /includeJokers must be a boolean/);
+    assert.equal(room.options.includeJokers, true);
+    assert.equal(room.game.includeJokers, true);
+  }
+  const changed = await host.request({ type: 'UPDATE_ROOM_OPTIONS', roomId, options: { includeJokers: false } }, 'ROOM_OPTIONS_UPDATED');
+  const peerChanged = await guest.next('ROOM_OPTIONS_UPDATED');
+  const watcherChanged = await spectator.next('ROOM_OPTIONS_UPDATED');
+  for (const message of [changed, peerChanged, watcherChanged]) {
+    assert.deepEqual(message.state.options, { ...options, includeJokers: false });
+  }
+  assert.equal(room.game.includeJokers, false);
+  await host.request({ type: 'REMATCH', roomId }, 'ROOM_STATE'); await guest.next('ROOM_STATE'); await spectator.next('ROOM_STATE');
+  const rematch = await guest.request({ type: 'REMATCH', roomId }, 'ROOM_STATE'); await host.next('ROOM_STATE'); await spectator.next('ROOM_STATE');
+  assert.equal(rematch.state.phase, 'ROUND_1_COINS');
+  assert.equal(room.game.deck.length, 46);
+  assert.ok([...room.game.deck, ...room.game.players.flatMap(player => player.holeCards)].every(card => !card.joker));
 });
 
 test('room option updates reject active phases, cross-room requests, and spectator overflow', async t => {

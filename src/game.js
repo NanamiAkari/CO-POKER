@@ -12,18 +12,20 @@ const PHASES = Object.freeze({
 });
 
 class GameRoom {
-  constructor({ players, handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
+  constructor({ players, handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
     if (!players || players.length < 2) throw new Error('At least two players are required');
     if (players.length > 5) throw new Error('At most five players are allowed');
     if (new Set(players).size !== players.length) throw new Error('Player names must be unique');
     if (handCardCount !== 2 && handCardCount !== 3) throw new Error('handCardCount must be 2 or 3');
     if (!['any', 'all-hole'].includes(handUsageRule)) throw new Error('Invalid handUsageRule');
     if (!['all', 'self', 'none'].includes(historyVisibility)) throw new Error('Invalid historyVisibility');
+    if (typeof includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
     if (!Number.isInteger(spectatorSlots) || spectatorSlots < 0 || spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
     this.players = players.map(id => ({ id, holeCards: [], currentCoin: null, coinHistory: [], finalHand: null }));
     this.handCardCount = handCardCount;
     this.handUsageRule = handUsageRule;
     this.historyVisibility = historyVisibility;
+    this.includeJokers = includeJokers;
     this.turnTimerEnabled = turnTimerEnabled;
     this.turnTimerSeconds = turnTimerSeconds;
     this.spectatorSlots = spectatorSlots;
@@ -53,7 +55,7 @@ class GameRoom {
       this.successCount = 0;
       this.failureCount = 0;
     }
-    this.deck = shuffle(createDeck(), this.random);
+    this.deck = shuffle(createDeck({ includeJokers: this.includeJokers }), this.random);
     this.communityCards = [];
     this.players.forEach(player => {
       player.holeCards = this.deck.splice(0, this.handCardCount);
@@ -73,21 +75,24 @@ class GameRoom {
   updateOptions(options = {}) {
     if (this.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
     if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid room options');
-    const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'spectatorSlots']);
+    const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'includeJokers', 'spectatorSlots']);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unknown room option: ${key}`);
     const next = {
       handCardCount: options.handCardCount ?? this.handCardCount,
       handUsageRule: options.handUsageRule ?? this.handUsageRule,
       historyVisibility: options.historyVisibility ?? this.historyVisibility,
+      includeJokers: Object.prototype.hasOwnProperty.call(options, 'includeJokers') ? options.includeJokers : this.includeJokers,
       spectatorSlots: options.spectatorSlots ?? this.spectatorSlots
     };
     if (![2, 3].includes(next.handCardCount)) throw new Error('handCardCount must be 2 or 3');
     if (!['any', 'all-hole'].includes(next.handUsageRule)) throw new Error('Invalid handUsageRule');
     if (!['all', 'self', 'none'].includes(next.historyVisibility)) throw new Error('Invalid historyVisibility');
+    if (typeof next.includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
     if (!Number.isInteger(next.spectatorSlots) || next.spectatorSlots < 0 || next.spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
     this.handCardCount = next.handCardCount;
     this.handUsageRule = next.handUsageRule;
     this.historyVisibility = next.historyVisibility;
+    this.includeJokers = next.includeJokers;
     this.spectatorSlots = next.spectatorSlots;
     this.rematchConfirmed.clear();
     this.comparisonSkipVotes.clear();

@@ -54,6 +54,45 @@ test('number cards show the right number of pips and court cards have two mirror
   assert.notEqual(art.cardImage({ rank: 11, suit: 's' }), art.cardImage({ rank: 12, suit: 's' }));
 });
 
+test('red and black physical jokers have distinct self-contained double-headed portraits', () => {
+  const images = new Set(createDeck().map(art.cardImage));
+  for (const [joker, name, color] of [['red', '大王', '#87323e'], ['black', '小王', '#173437']]) {
+    const card = { joker };
+    assert.equal(art.cardText(card), name);
+    const image = art.cardImage(card);
+    const svg = svgFrom(image);
+    assert.ok(svg.includes(`<title>${name}</title>`));
+    assert.ok(svg.includes(`fill="${color}"`));
+    assert.match(svg, /viewBox="0 0 140 196"/);
+    assert.match(svg, /class="joker-portrait"/);
+    assert.match(svg, /href="#joker-half" transform="rotate\(180 70 98\)"/);
+    assert.match(svg, /href="#joker-corner" transform="rotate\(180 70 98\)"/);
+    assert.doesNotMatch(svg, /class="joker-origin"/);
+    images.add(image);
+    assert.equal(art.cardImage({ joker }), image);
+  }
+  assert.equal(images.size, 54);
+});
+
+test('resolved jokers show the chosen card and a source stamp without cache collisions', () => {
+  for (const natural of createDeck()) {
+    const joker = ['h', 'd'].includes(natural.suit) ? 'red' : 'black';
+    const name = joker === 'red' ? '大王' : '小王';
+    const resolved = { ...natural, joker };
+    const svg = svgFrom(art.cardImage(resolved));
+    assert.equal(art.cardText(resolved), `${name}（作 ${art.cardText(natural)}）`);
+    assert.ok(svg.includes(`<title>${art.cardText(resolved)}</title>`));
+    assert.ok(svg.includes(`class="joker-origin" aria-label="${name}"`));
+    assert.match(svg, /href="#corner" transform="rotate\(180 70 98\)"/);
+    assert.doesNotMatch(svg, /class="joker-portrait"/);
+    if (natural.rank <= 10) assert.equal((svg.match(/class="pip"/g) || []).length, natural.rank);
+    assert.notEqual(art.cardImage(resolved), art.cardImage(natural));
+    assert.notEqual(art.cardImage(resolved), art.cardImage({ joker }));
+    assert.doesNotMatch(svgFrom(art.cardImage(natural)), /joker-origin|joker-portrait/);
+    assert.equal(art.cardImage({ joker, ...natural }), art.cardImage(resolved));
+  }
+});
+
 test('card back and five engraved tokens are valid local SVG assets', () => {
   const back = svgFrom(art.cardBack);
   assert.match(back, /viewBox="0 0 140 196"/);
@@ -78,6 +117,11 @@ test('browser script exposes the same dependency-free API as CommonJS', () => {
   assert.deepEqual(Object.keys(browserArt).sort(), ['cardBack', 'cardImage', 'cardText', 'coinImage']);
   assert.equal(browserArt.cardBack, art.cardBack);
   for (const card of createDeck()) assert.equal(browserArt.cardImage(card), art.cardImage(card));
+  for (const card of [{ joker: 'red' }, { joker: 'black' },
+    { joker: 'red', rank: 14, suit: 'h' }, { joker: 'black', rank: 10, suit: 'c' }]) {
+    assert.equal(browserArt.cardImage(card), art.cardImage(card));
+    assert.equal(browserArt.cardText(card), art.cardText(card));
+  }
   for (let number = 1; number <= 5; number += 1) assert.equal(browserArt.coinImage(number), art.coinImage(number));
 });
 
@@ -91,4 +135,16 @@ test('invalid input cannot generate broken or injected SVG and empty cards are s
     assert.throws(() => art.cardText(card), TypeError);
   }
   for (const number of [0, 6, NaN, 2.5, '1', null]) assert.throws(() => art.coinImage(number), RangeError);
+});
+
+test('invalid joker colors, partial substitutions, and opposite-color suits are rejected', () => {
+  for (const card of [{ joker: 'green' }, { joker: '<script>' }, { joker: null },
+    { joker: 'red', rank: 14 }, { joker: 'black', suit: 's' },
+    { joker: 'red', rank: null, suit: null }, { joker: 'black', rank: '14', suit: 's' },
+    { joker: 'red', rank: 14, suit: 's' }, { joker: 'red', rank: 2, suit: 'c' },
+    { joker: 'black', rank: 14, suit: 'h' }, { joker: 'black', rank: 2, suit: 'd' },
+    { joker: 'red', rank: 14, suit: '<script>' }, { joker: 'black', rank: 15, suit: 'c' }]) {
+    assert.throws(() => art.cardImage(card), TypeError);
+    assert.throws(() => art.cardText(card), TypeError);
+  }
 });

@@ -5,7 +5,7 @@
   const Art = window.TabletopArt;
   const Highlights = window.HandHighlights;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
-  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all'},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
+  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
   const saved = (() => { try { return JSON.parse(localStorage.getItem('poker.preferences.v2') || '{}'); } catch { return {}; } })();
   const app = createApp({setup() {
     const inRoom=ref(false), panel=ref(null), ruleStep=ref(0), roomId=ref(''), playerId=ref(''), role=ref('PLAYER');
@@ -15,7 +15,7 @@
     const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null);
     const notice=ref(''), noticeError=ref(false);
     const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
-    const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2});
+    const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false});
     let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext;
     let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
     let receivedResultKey='', liveSkipState=null;
@@ -72,7 +72,7 @@
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];
     const rulePages=[
       {title:'游戏目标',topic:'目标',intro:'这是一款 2–5 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
-        '使用标准 52 张扑克牌，不含大小王。手牌只对本人可见，公共牌所有人共用。',
+        '默认使用 52 张扑克牌。房主开启“牌堆加入大小王”后为 54 张。手牌只对本人可见，公共牌所有人共用。',
         '有几名玩家，就有几枚硬币：1 号代表最强，2 号代表第二强，依此类推。观战者不占用硬币。',
         '没有下注或筹码输赢。全体玩家共同挑战：累计成功 3 局获胜，累计失败 3 局结束，不要求连续。'
       ],note:'一局包括四轮选币和一次最终结算；一场游戏可以包含多局。'},
@@ -93,6 +93,13 @@
         '手牌全部使用：2 张手牌必须再搭配 3 张公共牌；3 张手牌必须再搭配 2 张公共牌。系统只在符合条件的组合中选最大值。',
         '翻牌后，自己的牌区会出现“!”提示，可查看当前可见牌能组成的最大牌型。后续公共牌还可能改变它。'
       ],note:'例如，公共牌本身构成最佳五张牌时，“任意组牌”允许直接使用；“手牌全部使用”仍必须带上全部手牌。'},
+      {title:'大小王规则',topic:'大小王',intro:'创建房间时可开启“牌堆加入大小王”，在原有 52 张牌中加入一张大王和一张小王。默认关闭。',items:[
+        '大王可以替代任意点数的红桃或方块；小王可以替代任意点数的黑桃或梅花。两张王和普通牌一起洗牌，可能发到手牌，也可能出现在公共牌中。',
+        '系统自动选择最强的合法替代方式，不需要手动指定。感叹号提示只使用你已知的牌；后续翻牌可能改变王的替代牌。',
+        '公共牌中的同一张王按每名玩家的手牌分别计算，可以在不同玩家的最大牌组中替代不同的牌。',
+        '一组五张牌中不能重复同一张点数与花色都相同的牌，不增加“五条”牌型。替代只针对这五张牌判断，不受其他玩家手牌影响。',
+        '“必须使用全部手牌”也适用于王。结算和提示中，王会展示它替代的点数与花色，并保留大小王标记。'
+      ],note:'例如：大王搭配红桃 10、J、Q、K，可以作为红桃 A 组成皇家同花顺；小王不能完成这组红桃同花顺。'},
       {title:'牌型与点数大小',topic:'牌型',intro:'先比较牌型，再比较组成牌的点数。下表由强到弱排列。',table:{head:['牌型','组成'],rows:[
         ['同花顺','五张同花色且连续；10、J、Q、K、A 为皇家同花顺'],['四条','四张同点数'],['葫芦','三张同点数，加一对'],['同花','五张同花色，不要求连续'],['顺子','五张连续点数，不要求同花色'],['三条','三张同点数'],['两对','两组不同点数的对子'],['一对','两张同点数'],['高牌','不构成以上牌型']
       ]},items:['通常 A 最大，接着是 K、Q、J、10…2。A 也可以组成 A–2–3–4–5，此时按 5 点顺子算；Q–K–A–2–3 不算顺子。','顺子、同花顺比较最高一张的点数；同花、高牌按五张牌点数从大到小逐张比较。','一对先比对子，两对先比大对再比小对。三条、四条先比相同点数的那组牌；以上仍相同时，再从大到小比较剩余牌（踢脚牌）。葫芦先比三条，再比对子。','花色不分高低。所有用于比较的点数都相同，算平局。'],note:'例如：双方都是一对 K，剩余牌分别为 A、9、3 和 Q、J、8，则带 A 的一方更大。'},
@@ -108,9 +115,9 @@
         '当前版本中，开局后的玩家主动离开或掉线会结束房间，其他人返回主菜单。观战者离开不影响牌局。'
       ],note:'个人设置里的音效、减少动态效果和演出速度只影响自己的观看体验，不改变游戏规则。'}
     ];
-    const cardKey=c=>`${c.rank}-${c.suit}`;
+    const cardKey=c=>c.joker?`joker-${c.joker}`:`${c.rank}-${c.suit}`;
     const isChosen=(entry,card)=>entry.hand.cards.some(c=>cardKey(c)===cardKey(card));
-    const cardHighlight=(hand,card)=>hand&&card&&Number.isInteger(hand.category)&&Highlights?Highlights.getHighlights(hand).find(item=>item.card.rank===card.rank&&item.card.suit===card.suit):null;
+    const cardHighlight=(hand,card)=>hand&&card&&Number.isInteger(hand.category)&&Highlights?Highlights.getHighlights(hand).find(item=>cardKey(item.card)===cardKey(card)):null;
     const timings=()=>prefs.pace==='relaxed'?{select:3000,compare:5600,gap:1000,hold:1700}:{select:2300,compare:4300,gap:800,hold:1200};
     const comparisonWaiters=new Set();
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));

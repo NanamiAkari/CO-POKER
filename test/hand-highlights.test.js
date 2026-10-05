@@ -60,6 +60,15 @@ test('invalid hand input is rejected without broken highlight data', () => {
   assert.throws(() => getHighlights({ category: 1, cards: [c(2), c(2, 'h'), c(4), c(5), { rank: 20, suit: 's' }] }), TypeError);
 });
 
+test('resolved jokers retain their source identities and share the represented group glow', () => {
+  const evaluated=hand([{joker:'red'},{joker:'black'},c(14,'s'),c(14,'d'),c(13,'c')]);
+  const highlights=getHighlights(evaluated);
+  assert.equal(highlights[0].card.joker,'red');
+  assert.equal(highlights[1].card.joker,'black');
+  assert.deepEqual(highlights.slice(0,4).map(item=>item.meta.role),['quads','quads','quads','quads']);
+  assert.equal(highlights[4].meta.kicker,true);
+});
+
 test('selected cards use glow styles and two-pair groups have separate colours', () => {
   const css = fs.readFileSync(path.join(__dirname, '../public/hand-highlights.css'), 'utf8');
   assert.doesNotMatch(css, /outline\s*:/, 'selected cards should not be boxed with outlines');

@@ -100,7 +100,9 @@
         primary: role.primary,
         kicker: !role.primary
       };
-      return { card: { rank: card.rank, suit: card.suit }, class: categoryClass, meta: meta };
+      var highlightedCard = { rank: card.rank, suit: card.suit };
+      if (card.joker) highlightedCard.joker = card.joker;
+      return { card: highlightedCard, class: categoryClass, meta: meta };
     });
   }
 

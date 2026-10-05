@@ -1,9 +1,12 @@
 const SUITS = ['c', 'd', 'h', 's'];
 const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 const CATEGORY_NAMES = ['高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
+const JOKER_SUITS = { red: ['d', 'h'], black: ['c', 's'] };
 
-function createDeck() {
-  return SUITS.flatMap(suit => RANKS.map(rank => ({ suit, rank })));
+function createDeck({ includeJokers = false } = {}) {
+  const deck = SUITS.flatMap(suit => RANKS.map(rank => ({ suit, rank })));
+  if (includeJokers) deck.push({ joker: 'red' }, { joker: 'black' });
+  return deck;
 }
 
 function shuffle(deck, random = Math.random) {
@@ -32,8 +35,7 @@ function combinations(cards, size) {
   return result;
 }
 
-function evaluateFiveCards(cards) {
-  if (cards.length !== 5) throw new Error('Exactly five cards are required');
+function evaluateResolvedCards(cards) {
   const counts = new Map();
   cards.forEach(card => counts.set(card.rank, (counts.get(card.rank) || 0) + 1));
   const groups = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
@@ -60,6 +62,45 @@ function evaluateFiveCards(cards) {
   return { category, categoryName, tiebreak, cards: cards.slice() };
 }
 
+function evaluateFiveCards(cards) {
+  if (cards.length !== 5) throw new Error('Exactly five cards are required');
+  const jokers = cards.filter(card => card.joker);
+  if (!jokers.length) return evaluateResolvedCards(cards);
+  if (jokers.some(card => !JOKER_SUITS[card.joker])) throw new Error('Unknown joker color');
+  if (new Set(jokers.map(card => card.joker)).size !== jokers.length) throw new Error('Duplicate joker');
+
+  const natural = cards.filter(card => !card.joker);
+  const occupied = new Set(natural.map(card => `${card.rank}${card.suit}`));
+  if (occupied.size !== natural.length) throw new Error('Duplicate card');
+  const naturalSuit = natural[0].suit;
+  const flushPossible = natural.every(card => card.suit === naturalSuit)
+    && jokers.every(card => JOKER_SUITS[card.joker].includes(naturalSuit));
+  // Suits affect only flushes. Enumerate 13 ranks per joker and select a legal
+  // suit (the flush suit when possible), instead of 26 complete substitutions.
+  const options = jokers.map(card => RANKS.slice().reverse().flatMap(rank => {
+    const suits = JOKER_SUITS[card.joker].filter(suit => !occupied.has(`${rank}${suit}`));
+    if (!suits.length) return [];
+    const suit = flushPossible && suits.includes(naturalSuit) ? naturalSuit : suits[0];
+    return [{ rank, suit, joker: card.joker }];
+  }));
+  let best = null;
+  const substitutions = new Map();
+  function visit(index) {
+    if (index === jokers.length) {
+      const resolved = cards.map(card => card.joker ? substitutions.get(card.joker) : card);
+      const current = evaluateResolvedCards(resolved);
+      if (!best || compareHands(current, best) > 0) best = current;
+      return;
+    }
+    for (const replacement of options[index]) {
+      substitutions.set(replacement.joker, replacement);
+      visit(index + 1);
+    }
+  }
+  visit(0);
+  return best;
+}
+
 function compareHands(a, b) {
   if (a.category !== b.category) return Math.sign(a.category - b.category);
   for (let i = 0; i < Math.max(a.tiebreak.length, b.tiebreak.length); i += 1) {
@@ -74,7 +115,11 @@ function findBestHand(holeCards, communityCards, handUsageRule = 'any') {
     ? combinations(communityCards, 5 - holeCards.length).map(extra => holeCards.concat(extra))
     : combinations(available, 5);
   if (!candidates.length) throw new Error('Not enough cards to form a hand');
-  return candidates.map(evaluateFiveCards).reduce((best, current) => compareHands(current, best) > 0 ? current : best);
+  return candidates.map(evaluateFiveCards).reduce((best, current) => {
+    const comparison = compareHands(current, best);
+    const jokerCount = hand => hand.cards.filter(card => card.joker).length;
+    return comparison > 0 || (comparison === 0 && jokerCount(current) < jokerCount(best)) ? current : best;
+  });
 }
 
 class CoinTable {

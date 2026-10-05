@@ -34,17 +34,34 @@
   const encode = svg => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 
   function checkCard(card) {
+    if (card && card.joker !== undefined) {
+      if (card.joker !== 'red' && card.joker !== 'black') {
+        throw new TypeError('Expected a red or black joker');
+      }
+      // Physical jokers have no rank or suit; evaluated jokers carry their substitution.
+      if (card.rank === undefined && card.suit === undefined) return null;
+    }
     if (!card || !Number.isInteger(card.rank) || card.rank < 2 || card.rank > 14 ||
         !Object.prototype.hasOwnProperty.call(suits, card.suit)) {
       throw new TypeError('Expected a card with rank 2–14 and suit s, h, d, or c');
     }
+    if (card.joker !== undefined &&
+        (card.joker === 'red' ? !['h', 'd'].includes(card.suit) : !['s', 'c'].includes(card.suit))) {
+      throw new TypeError('Joker substitution must match its red or black suit color');
+    }
     return suits[card.suit];
+  }
+
+  function jokerText(color) {
+    return color === 'red' ? '大王' : '小王';
   }
 
   function cardText(card) {
     if (card == null) return '';
     const suit = checkCard(card);
-    return `${labels[card.rank] || card.rank}${suit.glyph}`;
+    if (!suit) return jokerText(card.joker);
+    const text = `${labels[card.rank] || card.rank}${suit.glyph}`;
+    return card.joker ? `${jokerText(card.joker)}（作 ${text}）` : text;
   }
 
   function cardFrame(content, definitions, title) {
@@ -110,15 +127,63 @@
       <path d="M65 98l5-4 5 4-5 4Z" fill="${palette.paleGold}" stroke="${palette.brass}"/>`;
   }
 
+  function jokerPortrait(joker) {
+    const red = joker === 'red';
+    const color = red ? palette.burgundy : palette.ink;
+    const accent = red ? '#bc5960' : '#477477';
+    const emblem = red ? suits.d.path : suits.s.path;
+    return `<g id="joker-corner" fill="${color}" font-family="'Noto Serif CJK SC', 'Songti SC', SimSun, serif" font-weight="700" font-size="15" text-anchor="middle">
+        <text x="17" y="27">${red ? '大' : '小'}</text><text x="17" y="44">王</text>
+      </g><use href="#joker-corner" transform="rotate(180 70 98)"/>
+      <rect x="34" y="26" width="72" height="144" rx="32" fill="${color}" stroke="${palette.brass}" stroke-width="1.2"/>
+      <rect x="38" y="30" width="64" height="136" rx="29" fill="${palette.cream}" stroke="${palette.brass}" stroke-width=".65"/>
+      <g id="joker-half" class="joker-portrait">
+        <path d="M39 98V87L52 77L68 83L84 77L101 88V98Z" fill="${color}"/>
+        <path d="M42 90L51 83L62 92L55 98H45ZM76 91L84 83L96 91L89 98H80Z" fill="${accent}"/>
+        <path d="M43 90L51 85L60 92L54 97ZM78 92L85 85L93 91L88 97Z" fill="none" stroke="${palette.brass}"/>
+        <path d="M61 71L60 82L69 91L79 82L77 71Z" fill="#dcbc93" stroke="${palette.ink}" stroke-width=".7"/>
+        <path d="M52 77L59 75L69 84L80 75L87 78L81 88L74 86L69 94L63 86L57 89Z" fill="${palette.paleGold}" stroke="${palette.brass}" stroke-width=".8"/>
+        <path d="M55 50Q52 72 68 80Q84 76 83 51Z" fill="#edd4ae" stroke="${palette.ink}" stroke-width=".8"/>
+        <path d="M56 52L61 53L59 66L54 60ZM81 51L82 64L77 67L76 53Z" fill="${color}"/>
+        <path d="M57 58Q62 54 65 58M72 58Q76 54 80 58" fill="none" stroke="${palette.ink}" stroke-width="1.3"/>
+        <path d="M68 58L65 66L70 67M62 69Q70 77 77 67Q70 72 62 69" fill="none" stroke="${color}" stroke-width="1.2"/>
+        <path d="M53 53Q50 39 43 45Q43 30 57 40Q61 22 69 35Q76 21 82 39Q97 29 97 44Q88 37 86 53Z" fill="${color}" stroke="${palette.brass}" stroke-width=".9"/>
+        <path d="M57 40L65 50L69 35L76 50L82 39L80 53H60Z" fill="${accent}"/>
+        <path d="M55 51Q69 44 84 51L84 55Q69 49 55 55Z" fill="${palette.brass}"/>
+        <g fill="${palette.paleGold}" stroke="${palette.brass}" stroke-width=".8">
+          <circle cx="43" cy="44" r="3"/><circle cx="69" cy="32" r="3"/><circle cx="97" cy="43" r="3"/>
+          <circle cx="56" cy="90" r="1.8"/><circle cx="69" cy="95" r="1.8"/><circle cx="82" cy="89" r="1.8"/>
+        </g>
+        <path d="${emblem}" transform="translate(96 68) scale(.37)" fill="${color}"/>
+        <path d="M45 65L49 69L45 73L41 69Z" fill="${palette.brass}"/>
+      </g><use href="#joker-half" transform="rotate(180 70 98)"/>
+      <path d="M38 98H102" stroke="${palette.brass}" stroke-width="2"/>
+      <path d="M62 98L70 93L78 98L70 103Z" fill="${palette.paleGold}" stroke="${palette.brass}"/>
+      <g fill="${color}" font-family="Georgia, serif" font-size="8" text-anchor="middle" letter-spacing="2"><text x="71" y="18">JOKER</text><text transform="rotate(180 70 98)" x="71" y="18">JOKER</text></g>`;
+  }
+
+  function jokerStamp(joker) {
+    const color = joker === 'red' ? palette.burgundy : palette.ink;
+    return `<g class="joker-origin" aria-label="${jokerText(joker)}">
+      <path d="M48 177H92L96 183L92 189H48L44 183Z" fill="${palette.cream}" stroke="${palette.brass}" stroke-width=".6"/>
+      <text x="70" y="186.5" text-anchor="middle" fill="${color}" font-family="'Noto Serif CJK SC', 'Songti SC', SimSun, serif" font-size="10" font-weight="700">${jokerText(joker)}</text>
+    </g>`;
+  }
+
   function cardImage(card) {
     if (card == null) return '';
     const suit = checkCard(card);
-    const key = `${card.rank}${card.suit}`;
+    const key = suit ? `${card.rank}${card.suit}:${card.joker || 'natural'}` : `joker:${card.joker}`;
     if (cardCache.has(key)) return cardCache.get(key);
-    const artwork = card.rank === 14 ? ace() : card.rank > 10 ? court(card.rank, suit.color)
-      : pipLayouts[card.rank].map(([x, y]) => `<use class="pip" href="#suit" transform="translate(${x} ${y}) rotate(${y > 98 ? 180 : 0}) scale(${card.rank >= 9 ? .76 : .9})"/>`).join('');
-    const svg = cardFrame(`<g fill="${suit.color}">${corner(card.rank, suit.color)}${artwork}</g>`,
-      `<path id="suit" d="${suit.path}"/>`, cardText(card));
+    let svg;
+    if (!suit) {
+      svg = cardFrame(jokerPortrait(card.joker), '', cardText(card));
+    } else {
+      const artwork = card.rank === 14 ? ace() : card.rank > 10 ? court(card.rank, suit.color)
+        : pipLayouts[card.rank].map(([x, y]) => `<use class="pip" href="#suit" transform="translate(${x} ${y}) rotate(${y > 98 ? 180 : 0}) scale(${card.rank >= 9 ? .76 : .9})"/>`).join('');
+      svg = cardFrame(`<g fill="${suit.color}">${corner(card.rank, suit.color)}${artwork}</g>${card.joker ? jokerStamp(card.joker) : ''}`,
+        `<path id="suit" d="${suit.path}"/>`, cardText(card));
+    }
     const image = encode(svg);
     cardCache.set(key, image);
     return image;

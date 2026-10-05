@@ -9,6 +9,7 @@ const { renderToString } = require('@vue/server-renderer');
 const Art = require('../public/tabletop-art');
 const SettlementDetails = require('../public/settlement-details');
 const HandHighlights = require('../public/hand-highlights');
+const { findBestHand } = require('../src/poker');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -64,6 +65,44 @@ test('host can render the post-round room rules panel', async () => {
   assert.match(view, /下一场规则/);
   assert.match(view, /修改后，所有玩家需要重新确认下一场/);
   assert.match(view, /保存下一场规则/);
+});
+
+test('joker rule is off by default, configurable at creation and retained in next-game settings', async () => {
+  const creation=await renderScreen(v=>{v.panel.value='create';assert.equal(v.roomSettings.includeJokers,false);});
+  assert.match(creation,/type="checkbox"[^>]*aria-label="牌堆加入大小王"/);
+  assert.doesNotMatch(creation.match(/<input[^>]*aria-label="牌堆加入大小王"[^>]*>/)[0],/\bchecked\b/);
+  const nextGame=await renderScreen(v=>{
+    v.inRoom.value=true;v.playerId.value='A';
+    Object.assign(v.state,{phase:'GAME_OVER',hostId:'A',options:{handCardCount:3,handUsageRule:'all-hole',historyVisibility:'all',spectatorSlots:2,includeJokers:true}});
+    v.prepareRoomSettings();assert.equal(v.roomSettings.includeJokers,true);
+  });
+  assert.match(nextGame.match(/<input[^>]*aria-label="牌堆加入大小王"[^>]*>/)[0],/\bchecked\b/);
+  const waiting=await renderScreen(v=>{v.inRoom.value=true;v.state.options.includeJokers=true;});
+  assert.match(waiting,/含大小王 · 54 张/);
+});
+
+test('joker source identities survive replacement in selection, hints, summary and final table', async () => {
+  const red={joker:'red'},black={joker:'black'};
+  const board=[{rank:14,suit:'s'},{rank:14,suit:'d'},{rank:13,suit:'c'},{rank:3,suit:'h'},{rank:4,suit:'d'}];
+  const best=findBestHand([red,black],board,'all-hole');
+  assert.equal(best.category,7);
+  const a={playerId:'A',coin:1,holeCards:[red,black],hand:best};
+  const b={playerId:'B',coin:2,holeCards:[{rank:8,suit:'c'},{rank:9,suit:'c'}],hand:findBestHand([{rank:8,suit:'c'},{rank:9,suit:'c'}],board)};
+  for(const stage of ['idle','select','compare','summary','table']){
+    const output=await renderScreen(v=>{
+      v.inRoom.value=true;v.playerId.value='A';v.presentation.value=stage;
+      Object.assign(v.state,{phase:stage==='idle'?'ROUND_4_COINS':'SETTLEMENT',players:[{id:'A',currentCoin:1},{id:'B',currentCoin:2}],ownHoleCards:[red,black],communityCards:board,ownEstimatedHand:best,finalHands:[a,b],result:stage==='idle'?null:{success:true,comparisons:[{higherCoin:2,lowerCoin:1,higherPlayerId:'B',lowerPlayerId:'A',passed:true,comparison:-1}]}});
+      v.summaryIndex.value=1;v.revealIndex.value=1;v.selectionLit.value=true;
+      assert.equal(v.isChosen(a,red),true);assert.equal(v.isChosen(a,black),true);
+      assert.equal(v.isChosen(a,{rank:14,suit:'h'}),false,'a simulated heart ace is still the red joker, not the physical ace');
+      assert.equal(v.cardHighlight(best,red).meta.role,'quads');
+      assert.equal(v.cardHighlight(best,black).card.joker,'black');
+      assert.equal(v.cardHighlight(best,{rank:14,suit:'h'}),undefined);
+    });
+    assert.match(output,/aria-label="大王"/);assert.match(output,/aria-label="小王"/);
+    assert.match(output,/大王（作 A♥）/);assert.match(output,/小王（作 A♣）/);
+    assert.doesNotMatch(output,/undefined|\[object Object\]/);
+  }
 });
 
 test('copying a room works on HTTP, restores focus, and reports unsupported clipboard honestly', async () => {

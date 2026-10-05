@@ -85,7 +85,7 @@
         </section>
         <section v-if="state.phase==='WAITING'" class="lobby-center">
           <h2>等待玩家</h2>
-          <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span></div>
+          <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span><span v-if="state.options?.includeJokers">含大小王 · 54 张</span></div>
           <button v-if="isHost" class="gold-button" :disabled="state.players.length<2||pending||!connected" @click="command('START_GAME')">开始游戏 <span aria-hidden="true">▷</span></button>
           <p v-else>等待房主开始</p><p>{{state.players.length}} / 5 已入座 · 房间号 {{roomId}}</p>
         </section>
@@ -141,13 +141,25 @@
             <h2>{{panel==='create'?'创建房间':'加入房间'}}</h2>
             <form @submit.prevent="panel==='create'?createRoom():joinRoom()">
               <label class="field">昵称<input v-model.trim="name" maxlength="24" required autocomplete="nickname" placeholder="输入昵称"></label>
-              <template v-if="panel==='create'"><div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div><label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label><label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label></template>
+              <template v-if="panel==='create'">
+                <div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div>
+                <label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label>
+                <label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label>
+                <label class="setting-row"><span>牌堆加入大小王<small>大王替代 ♥ ♦，小王替代 ♠ ♣</small></span><input type="checkbox" class="toggle" v-model="roomSettings.includeJokers" aria-label="牌堆加入大小王"></label>
+              </template>
               <template v-else><label class="field">房间号<input v-model.trim="joinCode" class="room-code-input" required maxlength="6" pattern="[a-fA-F0-9]{6}" placeholder="六位房间号" autocomplete="off"></label><label class="field">入座方式<select v-model="joinRole"><option value="PLAYER">一起游戏</option><option value="SPECTATOR">旁观这场牌局</option></select></label></template>
               <button class="gold-button wide" type="submit" :disabled="pending">{{pending?'连接中…':panel==='create'?'创建':'加入'}} <span>↗</span></button><p class="fine">{{panel==='create'?'分享房间号即可邀请玩家；选币不限时。':'输入房间号和昵称即可加入。'}}</p>
             </form>
           </template>
           <template v-else-if="panel==='settings'"><h2>游戏设置</h2><label class="setting-row"><span>桌面音效<small>硬币与翻牌音效</small></span><input type="checkbox" class="toggle" v-model="prefs.sound" @change="previewSound" aria-label="桌面音效"></label><label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label><label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label><button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button><p class="fine">设置自动保存在此浏览器。</p></template>
-          <template v-else-if="panel==='room-settings'"><h2>下一场规则</h2><p class="fine">本大轮已结束。修改后，所有玩家需要重新确认下一场。</p><div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div><label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label><label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label><button class="gold-button wide" :disabled="pending||!isHost||state.phase!=='GAME_OVER'" @click="saveRoomSettings">保存下一场规则 ↗</button></template>
+          <template v-else-if="panel==='room-settings'">
+            <h2>下一场规则</h2><p class="fine">本大轮已结束。修改后，所有玩家需要重新确认下一场。</p>
+            <div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div>
+            <label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label>
+            <label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label>
+            <label class="setting-row"><span>牌堆加入大小王<small>大王替代 ♥ ♦，小王替代 ♠ ♣</small></span><input type="checkbox" class="toggle" v-model="roomSettings.includeJokers" aria-label="牌堆加入大小王"></label>
+            <button class="gold-button wide" :disabled="pending||!isHost||state.phase!=='GAME_OVER'" @click="saveRoomSettings">保存下一场规则 ↗</button>
+          </template>
           <template v-else-if="panel==='rules'">
             <header class="rules-header"><span class="eyebrow">玩法手册</span><h2>{{rulePages[ruleStep].title}}</h2></header>
             <nav class="rules-contents" aria-label="规则目录"><button v-for="(page,i) in rulePages" :key="i" :class="{active:ruleStep===i}" :aria-current="ruleStep===i?'page':undefined" :aria-label="`第${i+1}页：${page.title}`" @click="goRulePage(i)">{{i+1}} {{page.topic}}</button></nav>
@@ -168,9 +180,9 @@
   </div>
 </div>
 <script src="/vendor/vue.global.prod.js"></script>
-<script src="/tabletop-art.js?v=20260930a"></script>
-<script src="/hand-highlights.js?v=20261005a"></script>
+<script src="/tabletop-art.js?v=20261005-jokers"></script>
+<script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/game-client.js?v=20261005-controls"></script>
+<script src="/game-client.js?v=20261005-jokers"></script>
 </body>
 </html>

@@ -87,7 +87,7 @@ test('updates room options only after GAME_OVER and clears rematch votes', () =>
   room.phase = PHASES.GAME_OVER;
   room.rematchConfirmed.add('a');
   const updated = room.updateOptions({ handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });
-  assert.deepEqual(updated, { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });
+  assert.deepEqual(updated, { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: false, spectatorSlots: 5 });
   assert.equal(room.handCardCount, 3);
   assert.equal(room.handUsageRule, 'all-hole');
   assert.equal(room.historyVisibility, 'self');
