@@ -228,12 +228,32 @@ test('rulebook pages render with bounded previous/next and keyboard navigation',
 
 test('rulebook pages include visual guides for each topic', async () => {
   let pageCount;
-  for (let i = 0; i < 8; i++) {
+  const visualCues = [
+    ['目标', ['手牌', '公共牌', '全桌']],
+    ['流程', ['发手牌', '公共牌 3 张', '公共牌第 4 张', '公共牌第 5 张']],
+    ['硬币', ['公共硬币区', '归还', '抢夺']],
+    ['组牌', ['手牌 + 5 张公共牌', '最大 5 张']],
+    ['大小王', ['大王（红王）', '小王（黑王）', '红色花色', '黑色花色']],
+    ['牌型', ['对子', '顺子', '同花顺']]
+  ];
+  for (let i = 0; i < 6; i++) {
     const page = await renderScreen(v => { v.panel.value='rules'; pageCount=v.rulePages.length; v.goRulePage(i); });
     assert.equal(pageCount, 8);
-    assert.match(page, /class="rule-visual visual-[^"]+"/);
-    assert.match(page, /data:image\/svg\+xml/);
+    const topic = visualCues[i][0];
+    const start = page.indexOf(`class="rule-visual visual-${topic}"`);
+    const end = page.indexOf('<p class="rule-intro"', start);
+    assert.ok(start >= 0 && end > start, `${topic} page must render one complete visual guide`);
+    const visual = page.slice(start, end);
+    assert.match(visual, /aria-label="[^"]*[\u4e00-\u9fff]{2,}[^"]*"/, `${topic} visual needs a meaningful Chinese accessible label`);
+    assert.doesNotMatch(visual, /aria-hidden="true"/, `${topic} visual label must be exposed to assistive technology`);
+    for (const cue of visualCues[i][1]) assert.ok(visual.includes(cue), `${topic} visual should name the action “${cue}”`);
+    assert.match(visual, /data:image\/svg\+xml/);
     assert.doesNotMatch(page, /\{\{|undefined|\[object Object\]/, 'rulebook pages have no unresolved Vue expressions');
+  }
+  for (let i = 6; i < 8; i++) {
+    const page = await renderScreen(v => { v.panel.value='rules'; pageCount=v.rulePages.length; v.goRulePage(i); });
+    assert.equal(pageCount, 8);
+    assert.doesNotMatch(page, /class="rule-visual/);
   }
 });
 
