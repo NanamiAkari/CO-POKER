@@ -226,6 +226,17 @@ test('rulebook pages render with bounded previous/next and keyboard navigation',
   }
 });
 
+test('rulebook pages include visual guides for each topic', async () => {
+  let pageCount;
+  for (let i = 0; i < 8; i++) {
+    const page = await renderScreen(v => { v.panel.value='rules'; pageCount=v.rulePages.length; v.goRulePage(i); });
+    assert.equal(pageCount, 8);
+    assert.match(page, /class="rule-visual visual-[^"]+"/);
+    assert.match(page, /data:image\/svg\+xml/);
+    assert.doesNotMatch(page, /\{\{|undefined|\[object Object\]/, 'rulebook pages have no unresolved Vue expressions');
+  }
+});
+
 test('holding a coin keeps remaining public coins visible but disabled', async () => {
   const table = await renderScreen(v => {
     v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A';

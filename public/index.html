@@ -7,7 +7,7 @@
   <title>CO-POKER · 德扑</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/game.css?v=20260930b">
-  <link rel="stylesheet" href="/rules.css?v=20260930b">
+  <link rel="stylesheet" href="/rules.css?v=20261006-rules">
   <link rel="stylesheet" href="/settlement.css?v=20261005-controls">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
@@ -192,6 +192,33 @@
             <header class="rules-header"><span class="eyebrow">玩法手册</span><h2>{{rulePages[ruleStep].title}}</h2></header>
             <nav class="rules-contents" aria-label="规则目录"><button v-for="(page,i) in rulePages" :key="i" :class="{active:ruleStep===i}" :aria-current="ruleStep===i?'page':undefined" :aria-label="`第${i+1}页：${page.title}`" @click="goRulePage(i)">{{i+1}} {{page.topic}}</button></nav>
             <div class="rule-body" tabindex="0" aria-label="规则正文">
+              <div class="rule-visual" :class="'visual-'+rulePages[ruleStep].topic" aria-hidden="true">
+                <template v-if="rulePages[ruleStep].topic==='目标'">
+                  <div class="visual-stack"><img class="rule-card-mini" :src="cardImage({rank:14,suit:'s'})" alt=""><img class="rule-card-mini offset" :src="cardImage({rank:10,suit:'h'})" alt=""></div>
+                  <span class="visual-arrow">＋</span><img class="rule-coin-mini" :src="coinImage(1)" alt=""><span class="visual-arrow">＝</span><span class="visual-table-mark">全桌</span>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='流程'">
+                  <div class="visual-step"><img class="rule-card-mini" :src="cardImage({rank:12,suit:'c'})" alt=""><small>发牌</small></div><span class="visual-arrow">→</span><div class="visual-step"><img class="rule-card-mini" :src="cardBack" alt=""><small>翻开 3 张</small></div><span class="visual-arrow">→</span><div class="visual-step"><img class="rule-card-mini" :src="cardImage({rank:9,suit:'d'})" alt=""><small>逐轮选币</small></div><span class="visual-arrow">→</span><div class="visual-step"><img class="rule-coin-mini" :src="coinImage(1)" alt=""><small>最终揭示</small></div>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='硬币'">
+                  <div class="visual-coins"><img v-for="coin in [1,2,3]" :key="coin" class="rule-coin-mini" :src="coinImage(coin)" alt=""></div><span class="visual-arrow">→</span><div class="visual-seat"><span class="visual-seat-dot"></span><span class="visual-seat-dot"></span><small>每人一枚</small></div><span class="visual-arrow">↩</span><div class="visual-coins muted"><img class="rule-coin-mini" :src="coinImage(2)" alt=""><small>可归还 / 抢夺</small></div>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='组牌'">
+                  <div class="visual-hand"><img class="rule-card-mini glow" :src="cardImage({rank:14,suit:'s'})" alt=""><img class="rule-card-mini glow" :src="cardImage({rank:14,suit:'h'})" alt=""><img class="rule-card-mini" :src="cardImage({rank:9,suit:'c'})" alt=""><img class="rule-card-mini" :src="cardImage({rank:7,suit:'d'})" alt=""><img class="rule-card-mini" :src="cardImage({rank:3,suit:'s'})" alt=""></div><span class="visual-arrow">→</span><span class="visual-table-mark">最佳五张</span>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='大小王'">
+                  <div class="visual-joker"><img class="rule-card-mini" :src="cardImage({joker:'red'})" alt=""><span>♥ ♦</span></div><span class="visual-arrow">＋</span><div class="visual-hand"><img class="rule-card-mini" :src="cardImage({rank:10,suit:'h'})" alt=""><img class="rule-card-mini" :src="cardImage({rank:11,suit:'h'})" alt=""><img class="rule-card-mini" :src="cardImage({rank:12,suit:'h'})" alt=""></div><span class="visual-arrow">→</span><span class="visual-table-mark">替代红色花色</span>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='牌型'">
+                  <div class="visual-rank"><div><img class="rule-card-mini glow" :src="cardImage({rank:14,suit:'s'})" alt=""><img class="rule-card-mini glow" :src="cardImage({rank:14,suit:'h'})" alt=""></div><small>一对</small></div><span class="visual-arrow">＜</span><div class="visual-rank"><div><img class="rule-card-mini glow gold" :src="cardImage({rank:10,suit:'s'})" alt=""><img class="rule-card-mini glow gold" :src="cardImage({rank:11,suit:'s'})" alt=""><img class="rule-card-mini glow gold" :src="cardImage({rank:12,suit:'s'})" alt=""></div><small>同花顺</small></div>
+                </template>
+                <template v-else-if="rulePages[ruleStep].topic==='结算'">
+                  <div class="visual-order"><img class="rule-coin-mini" :src="coinImage(3)" alt=""><span>→</span><img class="rule-coin-mini" :src="coinImage(2)" alt=""><span>→</span><img class="rule-coin-mini" :src="coinImage(1)" alt=""></div><span class="visual-arrow">↓</span><div class="visual-table-mark">逐组比较</div>
+                </template>
+                <template v-else>
+                  <div class="visual-seat-ring"><span></span><span></span><span></span><span></span></div><span class="visual-arrow">＋</span><img class="rule-card-mini" :src="cardBack" alt=""><span class="visual-arrow">→</span><span class="visual-table-mark">再来一局</span>
+                </template>
+              </div>
               <p class="rule-intro">{{rulePages[ruleStep].intro}}</p>
               <table v-if="rulePages[ruleStep].table" class="rules-table"><thead><tr><th v-for="heading in rulePages[ruleStep].table.head" :key="heading" scope="col">{{heading}}</th></tr></thead><tbody><tr v-for="(row,i) in rulePages[ruleStep].table.rows" :key="i"><td v-for="(cell,j) in row" :key="j">{{cell}}</td></tr></tbody></table>
               <div v-if="rulePages[ruleStep].example" class="rules-example" aria-label="正确顺序示例"><template v-for="(coin,i) in [3,2,1]" :key="coin"><span v-if="i" aria-hidden="true">≤</span><figure><img :src="coinImage(coin)" :alt="`硬币${coin}`"><figcaption>{{['高牌','一对','两对'][i]}}</figcaption></figure></template></div>
@@ -212,6 +239,6 @@
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
 <script src="/room-chat.js?v=20261005-table-chat"></script>
-<script src="/game-client.js?v=20261005-table-chat"></script>
+<script src="/game-client.js?v=20261006-rules"></script>
 </body>
 </html>
