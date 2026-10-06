@@ -247,6 +247,30 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
 });
 
+test('spectators see every player\'s hole cards during live play while players keep them face-down', async () => {
+  const players = [
+    {id:'A', currentCoin:1, holeCards:[{rank:14,suit:'h'},{rank:13,suit:'c'}]},
+    {id:'B', currentCoin:2, holeCards:[{rank:10,suit:'s'},{rank:9,suit:'d'}]}
+  ];
+  const spectator = await renderScreen(v => {
+    v.inRoom.value = true; v.connected.value = true; v.role.value = 'SPECTATOR'; v.playerId.value = 'watcher';
+    Object.assign(v.state, {phase:'ROUND_2_COINS', players, communityCards:[{rank:2,suit:'c'},{rank:3,suit:'d'},{rank:4,suit:'h'}]});
+  });
+  assert.equal((spectator.match(/class="seat-cards spectator-reveal"/g) || []).length, 2);
+  assert.match(spectator, /aria-label="A♥"/);
+  assert.match(spectator, /aria-label="K♣"/);
+  assert.match(spectator, /aria-label="10♠"/);
+  assert.match(spectator, /aria-label="9♦"/);
+  assert.doesNotMatch(spectator, /spectating player card placeholder/);
+
+  const player = await renderScreen(v => {
+    v.inRoom.value = true; v.connected.value = true; v.role.value = 'PLAYER'; v.playerId.value = 'watcher';
+    Object.assign(v.state, {phase:'ROUND_2_COINS', players, communityCards:[{rank:2,suit:'c'},{rank:3,suit:'d'},{rank:4,suit:'h'}]});
+  });
+  assert.doesNotMatch(player, /class="seat-cards spectator-reveal"/);
+  assert.equal((player.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 8);
+});
+
 test('own hand hint stays behind the exclamation hover and does not highlight the hand', async () => {
   const hand={category:1,categoryName:'一对',tiebreak:[9,14,13,11],cards:[{rank:9,suit:'s'},{rank:9,suit:'h'},{rank:14,suit:'d'},{rank:13,suit:'c'},{rank:11,suit:'s'}]};
   const table=await renderScreen(v=>{

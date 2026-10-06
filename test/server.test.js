@@ -162,6 +162,7 @@ test('server filters histories and estimates across each visibility mode', async
     assert.deepEqual(next.state.players[0].coinHistory, historyVisibility === 'all' ? [1] : []);
     assert.deepEqual(next.state.players[1].coinHistory, historyVisibility === 'none' ? [] : [2]);
     assert.deepEqual(watched.state.ownHoleCards, []); assert.equal(watched.state.ownEstimatedHand, null);
+    assert.deepEqual(watched.state.players.map(player => player.holeCards), f.server.manager.get(r.roomId).game.players.map(player => player.holeCards));
     assert.deepEqual(watched.state.players[0].coinHistory, historyVisibility === 'all' ? [1] : []);
     const replay = await spectator.request({type:'GET_REPLAY',roomId:r.roomId}, 'REPLAY_DATA');
     if (historyVisibility !== 'all') {
@@ -169,6 +170,17 @@ test('server filters histories and estimates across each visibility mode', async
       assert.ok(replay.events.every(event => !event.payload.coinHistory?.length));
     }
   }
+});
+
+test('spectators joining an active game receive every player hand immediately', async t => {
+  const f = await fixture(t); const r = await f.room({ spectatorSlots: 1 });
+  await f.start(r);
+  const spectator = await f.connect();
+  const joined = await spectator.request({ type: 'JOIN_ROOM', playerId: 'watcher', role: 'SPECTATOR', roomId: r.roomId }, 'ROOM_STATE');
+  const game = f.server.manager.get(r.roomId).game;
+  assert.deepEqual(joined.state.players.map(player => player.holeCards), game.players.map(player => player.holeCards));
+  assert.deepEqual(joined.state.ownHoleCards, []);
+  assert.equal(joined.state.ownEstimatedHand, null);
 });
 
 test('four rounds, immutable settlement, rematch votes, and END_GAME close the full menu loop', async t => {
@@ -236,11 +248,12 @@ test('joker rules, private deals, settlement, and next-game changes synchronize 
   const guestDeal = await guest.next('ROOM_STATE');
   const spectatorDeal = await spectator.next('ROOM_STATE');
   assert.deepEqual(privateDeal.state.ownHoleCards[0], { joker: 'red' });
-  for (const message of [guestDeal, spectatorDeal]) {
-    assert.ok(!JSON.stringify(message.state).includes('joker'));
-    assert.deepEqual(message.state.finalHands, []);
-    assert.deepEqual(message.state.communityCards, []);
-  }
+  assert.ok(!JSON.stringify(guestDeal.state).includes('"joker":"red"'));
+  assert.deepEqual(guestDeal.state.finalHands, []);
+  assert.deepEqual(guestDeal.state.communityCards, []);
+  assert.deepEqual(spectatorDeal.state.players.map(player => player.holeCards), room.game.players.map(player => player.holeCards));
+  assert.deepEqual(spectatorDeal.state.finalHands, []);
+  assert.deepEqual(spectatorDeal.state.communityCards, []);
   assert.deepEqual(spectatorDeal.state.ownHoleCards, []);
   const flop = await guest.request({ type: 'MOVE_COIN', coin: 2, roomId }, 'ROOM_STATE');
   const hostFlop = await host.next('ROOM_STATE');

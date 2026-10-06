@@ -71,7 +71,14 @@
     function showFinalTable(){if(!isResult.value)return;closeComparisonDetail();presentation.value='table';}
     function showSettlementSummary(){if(!isResult.value)return;closeComparisonDetail();presentation.value='summary';}
     function finalHandFor(id){return state.finalHands.find(entry=>entry.playerId===id)||null;}
-    function opponentHoleCard(id,index){return presentation.value==='table'?finalHandFor(id)?.holeCards?.[index]||null:null;}
+    // A spectator is granted a read-only table view by the server. Their
+    // player snapshots include every player's hole cards, so expose those
+    // cards to the seat renderer while keeping normal player views face-down
+    // until the final table review/reveal.
+    function opponentHoleCard(id,index){
+      if(role.value==='SPECTATOR')return state.players.find(player=>player.id===id)?.holeCards?.[index]||null;
+      return presentation.value==='table'?finalHandFor(id)?.holeCards?.[index]||null:null;
+    }
     const historyLabel=computed(()=>({all:'历史公开',self:'历史仅自己可见',none:'隐藏历史'})[state.options?.historyVisibility]);
     const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',leave:'离开牌桌'})[panel.value]);
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];

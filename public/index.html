@@ -64,7 +64,7 @@
         <div class="opponents">
           <article v-for="(player,i) in opponents" :key="player.id" class="seat" :data-player="player.id">
             <span class="seat-name"><span class="avatar">{{i%2?'♦':'♣'}}</span>{{player.id}}</span>
-            <div class="seat-cards"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
+            <div class="seat-cards" :class="{'spectator-reveal':role==='SPECTATOR'}"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
             <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
             <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(player.id)" :sticker="chatSticker(chatBubbleFor(player.id)?.stickerId)"></chat-bubble>
@@ -239,6 +239,6 @@
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
 <script src="/room-chat.js?v=20261005-table-chat"></script>
-<script src="/game-client.js?v=20261006-rules"></script>
+<script src="/game-client.js?v=20261006-spectator"></script>
 </body>
 </html>

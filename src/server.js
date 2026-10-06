@@ -83,8 +83,21 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
   const viewFor = (room, client) => {
     const game = room.game;
     const own = client.role === 'PLAYER' && game?.players.find(p => p.id === client.id);
+    // Spectators are explicitly allowed to see the complete table. Keep this
+    // payload scoped to the spectator branch: player views must continue to
+    // expose only their own hole cards (until final reveal), and the shared
+    // top-level state must never contain private cards.
+    const spectator = client.role === 'SPECTATOR' && game;
     const reveal = game && [PHASES.FINAL_REVEAL, PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(game.phase);
-    const privateView = own ? game.getPlayerView(client.id) : {
+    const privateView = own ? game.getPlayerView(client.id) : spectator ? {
+      communityCards: game.communityCards.slice(), ownHoleCards: [], ownEstimatedHand: null, coinHistory: [],
+      players: game.players.map(p => ({
+        id: p.id,
+        currentCoin: p.currentCoin,
+        coinHistory: room.options.historyVisibility === 'all' ? p.coinHistory.slice() : [],
+        holeCards: p.holeCards.slice()
+      }))
+    } : {
       communityCards: game?.communityCards || [], ownHoleCards: [], ownEstimatedHand: null, coinHistory: [],
       ...(game ? { players: game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin, coinHistory: room.options.historyVisibility === 'all' ? p.coinHistory.slice() : [] })) } : {})
     };
