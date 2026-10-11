@@ -24,6 +24,10 @@
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
     }});
+    const tomato=window.TomatoInteractions.create({roomId,playerId,send(payload){
+      if(!socket||socket.readyState!==WebSocket.OPEN)return false;
+      socket.send(JSON.stringify(payload));return true;
+    }});
     if(window.innerWidth<1100)chat.chatOpen.value=false;
     const isHost=computed(()=>state.hostId===playerId.value);
     const isResult=computed(()=>Boolean(state.result));
@@ -233,6 +237,7 @@
     }
     function resetRoom(text=''){
       chat.resetChat();
+      tomato.reset();
       if(window.innerWidth<1100)chat.chatOpen.value=false;
       completedComparisonCount.value=0;closeComparisonDetail();
       generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
@@ -258,6 +263,8 @@
         if(serial!==socketSerial)return;
         let msg;try{msg=JSON.parse(event.data);}catch{return;}
         if(msg.type==='CHAT_MESSAGE'||msg.type==='CHAT_ERROR'){chat.handleChatMessage(msg);return;}
+        if(msg.type==='TOMATO_THROW'){tomato.handleTomatoMessage(msg);return;}
+        if(msg.type==='TOMATO_ERROR'){notify(msg.message||'番茄动作未发送',true);return;}
         if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
         if(msg.state){
@@ -343,7 +350,7 @@
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

@@ -7,7 +7,10 @@
 
   function unwrap(value) {
     if (typeof value === 'function') return value();
-    if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
+    // Vue refs expose their value through a getter/proxy, so it is not safe to
+    // require an own enumerable property here. Plain `{ value }` test doubles
+    // continue to work with the same branch.
+    if (value && typeof value === 'object' && 'value' in value) return value.value;
     return value;
   }
 

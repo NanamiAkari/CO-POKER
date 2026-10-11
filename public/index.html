@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
   <link rel="stylesheet" href="/room-chat.css?v=20261005-table-chat">
   <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-table-chat">
+  <link rel="stylesheet" href="/tomato-interactions.css?v=20261011-tomato">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -67,6 +68,7 @@
             <div class="seat-cards" :class="{'spectator-reveal':role==='SPECTATOR'}"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
             <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
             <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
+            <button v-if="!isResult&&(role==='PLAYER'||role==='SPECTATOR')" class="tomato-button" type="button" :disabled="!connected" :aria-label="`向 ${player.id} 扔番茄`" title="扔番茄" @click.stop="sendTomato(player.id)">🍅</button>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(player.id)" :sticker="chatSticker(chatBubbleFor(player.id)?.stickerId)"></chat-bubble>
           </article>
           <article v-for="n in (state.phase==='WAITING'?Math.max(0,3-opponents.length):0)" :key="'empty'+n" class="seat empty-seat" aria-hidden="true">＋<small>空位</small></article>
@@ -101,7 +103,7 @@
           <div v-if="busy&&!isResult" class="phase-breath" role="status">{{presentation==='deal'?'♠  ♥  ♣  ♦':'· · ·'}}</div>
         </template>
         <div v-if="role==='PLAYER'" class="self-zone">
-          <div class="self-hand" :class="{deal:presentation==='deal'}"><playing-card v-for="(card,i) in (state.ownHoleCards.length?state.ownHoleCards:Array(handCount).fill(null))" :key="i" :card="card" :style="{'--order':i}"></playing-card><span class="self-name">{{playerId}}</span>
+          <div class="self-hand" :data-player="playerId" :class="{deal:presentation==='deal'}"><playing-card v-for="(card,i) in (state.ownHoleCards.length?state.ownHoleCards:Array(handCount).fill(null))" :key="i" :card="card" :style="{'--order':i}"></playing-card><span class="self-name">{{playerId}}</span>
             <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text"><strong>{{state.ownEstimatedHand.categoryName}}</strong><span class="hint-cards"><playing-card v-for="card in state.ownEstimatedHand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(state.ownEstimatedHand,card)"></playing-card></span></span></button>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(playerId)" :sticker="chatSticker(chatBubbleFor(playerId)?.stickerId)"></chat-bubble>
           </div>
@@ -234,6 +236,7 @@
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
 <script src="/room-chat.js?v=20261005-table-chat"></script>
+<script src="/tomato-interactions.js?v=20261011-tomato"></script>
 <script src="/game-client.js?v=20261006-spectator"></script>
 </body>
 </html>

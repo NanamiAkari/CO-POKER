@@ -41,7 +41,7 @@ async function client() {
       view = options.setup();
       return {component(){},config:{},mount(){}};
     }},
-    window:{TabletopArt:{},RoomChat:require('../public/room-chat'),matchMedia:()=>({matches:false})},
+    window:{TabletopArt:{},RoomChat:require('../public/room-chat'),TomatoInteractions:require('../public/tomato-interactions'),matchMedia:()=>({matches:false})},
     document:{querySelectorAll:()=>[],querySelector:()=>null},
     location:{protocol:'http:',host:'localhost'},WebSocket:FakeWebSocket,
     localStorage:{getItem:()=>null,setItem(){}},setTimeout,clearTimeout,

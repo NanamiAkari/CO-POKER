@@ -35,6 +35,15 @@ test('sendTomato emits an independent TOMATO_THROW action', () => {
   assert.equal(controller.sendTomato(''), false);
 });
 
+test('sendTomato unwraps Vue-style ref getters', () => {
+  const sent = [];
+  const roomId = {}; Object.defineProperty(roomId, 'value', { get: () => 'REF123' });
+  const playerId = {}; Object.defineProperty(playerId, 'value', { get: () => 'Alice' });
+  const controller = TomatoInteractions.create({ roomId, playerId, send: payload => sent.push(payload) });
+  assert.equal(controller.sendTomato('Bob').fromPlayerId, 'Alice');
+  assert.equal(sent[0].roomId, 'REF123');
+});
+
 test('handleTomatoMessage validates room and deduplicates action ids', () => {
   const timer = clock();
   const controller = TomatoInteractions.create({ roomId: 'ABC123', playerId: 'Alice', now: timer.now, setTimeout: timer.setTimeout, clearTimeout: timer.clearTimeout });

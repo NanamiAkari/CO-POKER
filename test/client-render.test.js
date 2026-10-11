@@ -11,6 +11,7 @@ const SettlementDetails = require('../public/settlement-details');
 const HandHighlights = require('../public/hand-highlights');
 const { findBestHand } = require('../src/poker');
 const RoomChat = require('../public/room-chat');
+const TomatoInteractions = require('../public/tomato-interactions');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -25,7 +26,7 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
     localStorage: { getItem: () => null, setItem() {} },
     ...timers, console
@@ -265,6 +266,19 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   assert.match(table, /disabled aria-label="选择硬币 2"/);
   assert.match(table, /aria-label="归还硬币 1"/);
   assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
+});
+
+test('opponent seats expose a tomato action without coupling it to coin controls', async () => {
+  let view;
+  const table = await renderScreen(v => {
+    view = v;
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER'; v.roomId.value = 'ABC123';
+    Object.assign(v.state, {phase:'ROUND_1_COINS',players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}]});
+  });
+  assert.match(table, /aria-label="向 B 扔番茄"/);
+  assert.doesNotMatch(table, /向 A 扔番茄/);
+  assert.equal(typeof view.sendTomato, 'function');
+  assert.equal(view.sendTomato('A'), false);
 });
 
 test('spectators see every player\'s hole cards during live play while players keep them face-down', async () => {

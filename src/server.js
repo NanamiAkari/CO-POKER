@@ -27,8 +27,35 @@ function playerName(value) {
 }
 
 class RoomManager {
-  constructor({ chatOptions } = {}) { this.rooms = new Map(); this.chatOptions = chatOptions; }
-  create(options = {}) { options = validateOptions(options); const id = crypto.randomBytes(3).toString('hex').toUpperCase(); const room = { id, hostId: null, clients: new Map(), spectators: [], game: null, options, chat: new RoomChat(this.chatOptions) }; this.rooms.set(id, room); return room; }
+  constructor({ chatOptions, tomatoOptions } = {}) {
+    this.rooms = new Map();
+    this.chatOptions = chatOptions;
+    // Tomato throws are intentionally a transient room event. Keep the
+    // limiter outside of game state so sending one can never release or
+    // enqueue a pending game action.
+    const configured = tomatoOptions || {};
+    this.tomatoOptions = {
+      now: typeof configured.now === 'function' ? configured.now : () => Date.now(),
+      windowMs: Number.isFinite(configured.windowMs) && configured.windowMs > 0 ? configured.windowMs : 2000,
+      maxThrows: Number.isInteger(configured.maxThrows) && configured.maxThrows > 0 ? configured.maxThrows : 3
+    };
+  }
+  create(options = {}) {
+    options = validateOptions(options);
+    const id = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const room = {
+      id,
+      hostId: null,
+      clients: new Map(),
+      spectators: [],
+      game: null,
+      options,
+      chat: new RoomChat(this.chatOptions),
+      tomato: { recentBySender: new Map() }
+    };
+    this.rooms.set(id, room);
+    return room;
+  }
   get(id) { return this.rooms.get(id); }
 }
 
@@ -70,6 +97,23 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
   heartbeat.unref();
   wss.on('close', () => clearInterval(heartbeat));
   const send = (ws, type, payload = {}) => { if (ws.readyState === 1) ws.send(JSON.stringify({ type, ...payload })); };
+  const tomatoError = (code, message) => { const error = new Error(message); error.code = code; return error; };
+  const acceptTomato = (room, senderId, targetId) => {
+    const now = manager.tomatoOptions.now();
+    const bucket = room.tomato.recentBySender.get(senderId) || [];
+    const recent = bucket.filter(timestamp => now - timestamp < manager.tomatoOptions.windowMs);
+    if (recent.length >= manager.tomatoOptions.maxThrows) {
+      throw tomatoError('TOMATO_RATE_LIMITED', '动作太快了，请稍后再试');
+    }
+    recent.push(now);
+    room.tomato.recentBySender.set(senderId, recent);
+    return {
+      actionId: `tomato-${crypto.randomBytes(9).toString('hex')}`,
+      fromPlayerId: senderId,
+      toPlayerId: targetId,
+      timestamp: now
+    };
+  };
   const state = room => ({
     roomId: room.id, hostId: room.hostId, options: room.options,
     phase: room.game?.phase || PHASES.WAITING,
@@ -154,6 +198,27 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           for (const client of room.clients.values()) send(client, 'CHAT_MESSAGE', { roomId: room.id, message });
           return;
         }
+        // THROW_TOMATO is the client request. TOMATO_THROW is accepted as a
+        // backwards-compatible alias for clients that used the event name
+        // before the request/event names were separated; it is never echoed
+        // back as a request and the server still derives the sender itself.
+        if (msg.type === 'THROW_TOMATO' || msg.type === 'TOMATO_THROW') {
+          const room = manager.get(msg.roomId);
+          if (!room) throw tomatoError('TOMATO_ROOM_NOT_FOUND', '房间已结束');
+          if (ws.room !== room || room.clients.get(ws.id) !== ws) throw tomatoError('TOMATO_NOT_MEMBER', '请先加入这个房间');
+          const targetId = typeof msg.targetPlayerId === 'string' ? msg.targetPlayerId.trim()
+            : typeof msg.toPlayerId === 'string' ? msg.toPlayerId.trim()
+              : typeof msg.action?.toPlayerId === 'string' ? msg.action.toPlayerId.trim() : '';
+          if (!targetId) throw tomatoError('TOMATO_INVALID_TARGET', '请选择目标玩家');
+          const target = room.clients.get(targetId);
+          if (!target || target.role !== 'PLAYER') throw tomatoError('TOMATO_UNKNOWN_TARGET', '目标玩家不在房间内');
+          if (targetId === ws.id) throw tomatoError('TOMATO_SELF_TARGET', '不能向自己投掷番茄');
+          const action = acceptTomato(room, ws.id, targetId);
+          // This is deliberately a room event without a state snapshot. The
+          // client owns the animation and the game state remains untouched.
+          for (const client of room.clients.values()) send(client, 'TOMATO_THROW', { roomId: room.id, action });
+          return;
+        }
         if (msg.type === 'CREATE_ROOM') {
           if (ws.room) throw new Error('Leave the current room first');
           const id = playerName(msg.playerId);
@@ -225,6 +290,10 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           roomId: typeof msg.roomId === 'string' ? msg.roomId : null,
           clientMessageId: typeof msg.clientMessageId === 'string' ? msg.clientMessageId : null,
           code: error.code || 'CHAT_INVALID_MESSAGE', message: error.message
+        });
+        if (msg?.type === 'THROW_TOMATO' || msg?.type === 'TOMATO_THROW') return send(ws, 'TOMATO_ERROR', {
+          roomId: typeof msg.roomId === 'string' ? msg.roomId : null,
+          code: error.code || 'TOMATO_INVALID_MESSAGE', message: error.message
         });
         send(ws, 'ERROR', { message: error.message });
       }
