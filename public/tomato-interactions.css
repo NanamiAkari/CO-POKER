@@ -1,0 +1,86 @@
+/* A playful table interaction that remains above cards without blocking input. */
+.tomato-flight {
+  position: fixed;
+  z-index: 160;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  user-select: none;
+  font-size: 31px;
+  line-height: 1;
+  filter: drop-shadow(0 4px 5px #07120d99);
+  transform-origin: 50% 60%;
+  animation: tomato-flight-path 900ms cubic-bezier(.2,.72,.28,1) both;
+}
+
+.tomato-flight.tomato-impact {
+  animation: tomato-impact 240ms cubic-bezier(.2,.8,.28,1) both;
+}
+
+.tomato-flight.tomato-impact::after {
+  content: '✦';
+  position: absolute;
+  color: #f4d38a;
+  font-size: 18px;
+  animation: tomato-spark 240ms ease-out both;
+}
+
+.tomato-hit {
+  animation: tomato-hit 240ms ease-out;
+}
+
+.tomato-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid #c98b5c80;
+  border-radius: 999px;
+  background: #3c2622c7;
+  color: #f4d7af;
+  font-size: 11px;
+  line-height: 1;
+  transition: transform .16s ease, background .16s ease, border-color .16s ease;
+}
+
+.tomato-button:hover:not(:disabled) {
+  border-color: #e0a86e;
+  background: #6e382bcf;
+  transform: translateY(-1px);
+}
+
+.tomato-button:active:not(:disabled) { transform: translateY(1px) scale(.97); }
+.tomato-button:disabled { opacity: .42; }
+
+@keyframes tomato-flight-path {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-18deg) scale(.42); }
+  12% { opacity: 1; }
+  52% { transform: translate(calc(var(--tomato-x) * .5), calc(var(--tomato-y) * .5 - var(--tomato-arc))) rotate(16deg) scale(1.08); }
+  100% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) rotate(360deg) scale(1); }
+}
+
+@keyframes tomato-impact {
+  0% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) scale(1); }
+  45% { transform: translate(var(--tomato-x), var(--tomato-y)) scale(1.3) rotate(-12deg); }
+  100% { opacity: 0; transform: translate(var(--tomato-x), var(--tomato-y)) scale(.84) rotate(8deg); }
+}
+
+@keyframes tomato-spark {
+  from { opacity: .9; transform: scale(.4) rotate(0); }
+  to { opacity: 0; transform: scale(1.65) rotate(90deg); }
+}
+
+@keyframes tomato-hit {
+  0%, 100% { filter: none; }
+  35% { filter: drop-shadow(0 0 11px #ed9b63); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tomato-flight { animation-duration: 1ms; }
+  .tomato-flight.tomato-impact { animation-duration: 1ms; }
+  .tomato-hit { animation: none; }
+}
