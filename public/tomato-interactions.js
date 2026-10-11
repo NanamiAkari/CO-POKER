@@ -98,9 +98,15 @@
       visual.setAttribute('aria-label', '番茄互动');
       visual.style.left = `${sourceX - 18}px`;
       visual.style.top = `${sourceY - 18}px`;
-      visual.style.setProperty('--tomato-x', `${targetX - sourceX}px`);
-      visual.style.setProperty('--tomato-y', `${targetY - sourceY}px`);
-      visual.style.setProperty('--tomato-arc', `${Math.max(34, Math.min(96, Math.abs(targetX - sourceX) * .14 + 34))}px`);
+      const dx = targetX - sourceX;
+      const dy = targetY - sourceY;
+      const arc = Math.max(34, Math.min(96, Math.abs(dx) * .14 + 34));
+      // Keep the intermediate point as a concrete length. CSS typed
+      // multiplication is not available in a few embedded browsers.
+      visual.style.setProperty('--tomato-x', `${dx}px`);
+      visual.style.setProperty('--tomato-y', `${dy}px`);
+      visual.style.setProperty('--tomato-half-x', `${dx * .5}px`);
+      visual.style.setProperty('--tomato-mid-y', `${dy * .5 - arc}px`);
       visual.style.animationDuration = `${flightMs}ms`;
       doc.body?.appendChild(visual);
       flight.visual = visual;

@@ -59,7 +59,7 @@
 @keyframes tomato-flight-path {
   0% { opacity: 0; transform: translate(0, 0) rotate(-18deg) scale(.42); }
   12% { opacity: 1; }
-  52% { transform: translate(calc(var(--tomato-x) * .5), calc(var(--tomato-y) * .5 - var(--tomato-arc))) rotate(16deg) scale(1.08); }
+  52% { transform: translate(var(--tomato-half-x), var(--tomato-mid-y)) rotate(16deg) scale(1.08); }
   100% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) rotate(360deg) scale(1); }
 }
 
