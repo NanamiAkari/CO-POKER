@@ -46,7 +46,7 @@ function bubbleClock() {
 test('confirmed live chat shows bubbles even when chat is collapsed; pending text does not', () => {
   const clock = bubbleClock();
   const { chat, sent, ack, message, receive } = fixture(clock.options);
-  chat.toggleChat();
+  assert.equal(chat.chatOpen.value, false);
   chat.chatDraft.value = '我先选 👍';
   chat.sendChat();
   assert.equal(chat.chatBubbleFor('Alice'), null);
@@ -240,7 +240,7 @@ test('server histories merge with live chat by id, stay ordered, and retain only
 
 test('collapsed chat counts other players only, never historical messages or duplicate echoes', () => {
   const { chat, receive, message } = fixture();
-  chat.toggleChat();
+  assert.equal(chat.chatOpen.value, false);
   chat.handleChatMessage({ type: 'ROOM_CREATED', roomId: 'ABC123', chatHistory: [message(1, '历史')] });
   receive(message(2, '你好'));
   receive(message(2, '你好'));
@@ -248,6 +248,61 @@ test('collapsed chat counts other players only, never historical messages or dup
   assert.equal(chat.chatUnread.value, 1);
   chat.toggleChat();
   assert.equal(chat.chatUnread.value, 0);
+});
+
+test('chat starts collapsed for new and joined rooms, previews newest text without opening, and resets cleanly', () => {
+  const { chat, receive, message } = fixture();
+  assert.equal(chat.chatOpen.value, false);
+  assert.equal(chat.chatPreview.value, null);
+  assert.equal(chat.chatPreviewText.value, '');
+  chat.handleChatMessage({ type: 'ROOM_CREATED', roomId: 'ABC123', chatHistory: [] });
+  assert.equal(chat.chatOpen.value, false);
+  chat.handleChatMessage({ type: 'ROOM_STATE', roomId: 'ABC123', chatHistory: [message(2, '最近的历史消息'), message(1, '较早的消息')] });
+  assert.equal(chat.chatOpen.value, false);
+  assert.equal(chat.chatPreviewText.value, '最近的历史消息');
+  assert.equal(chat.chatUnread.value, 0);
+  receive(message(3, '下一局加油 👍', 'Carol'));
+  assert.equal(chat.chatPreview.value.playerId, 'Carol');
+  assert.equal(chat.chatPreviewText.value, '下一局加油 👍');
+  assert.equal(chat.chatOpen.value, false);
+  chat.toggleChat();
+  assert.equal(chat.chatOpen.value, true);
+  assert.equal(chat.chatUnread.value, 0);
+  chat.resetChat();
+  assert.equal(chat.chatOpen.value, false);
+  assert.equal(chat.chatPreview.value, null);
+  assert.equal(chat.chatPreviewText.value, '');
+});
+
+test('closing chat dismisses pickers and preserves a draft and latest message for reopening', () => {
+  const { chat, receive, message } = fixture();
+  receive(message(1, '看到了'));
+  chat.toggleChat();
+  chat.chatDraft.value = '还没发出的想法';
+  chat.toggleChatPanel('emoji');
+  assert.equal(chat.closeChat(), true);
+  assert.equal(chat.chatOpen.value, false);
+  assert.equal(chat.chatPanel.value, null);
+  assert.equal(chat.chatDraft.value, '还没发出的想法');
+  assert.equal(chat.chatPreviewText.value, '看到了');
+  assert.equal(chat.closeChat(), false);
+  chat.toggleChat();
+  assert.equal(chat.chatOpen.value, true);
+  assert.equal(chat.chatDraft.value, '还没发出的想法');
+  chat.resetChat();
+});
+
+test('collapsed preview follows sticker and own-message echoes while ignoring foreign-room events', () => {
+  const { chat, receive, message } = fixture();
+  receive({ ...message(1, '', 'Bob'), kind: 'sticker', stickerId: 'wave' });
+  assert.equal(chat.chatPreview.value.kind, 'sticker');
+  assert.equal(chat.chatPreviewText.value, '发送了一个表情包');
+  receive(message(2, '我来选', 'Alice'));
+  assert.equal(chat.chatPreview.value.playerId, 'Alice');
+  assert.equal(chat.chatPreviewText.value, '我来选');
+  chat.handleChatMessage({ type: 'CHAT_MESSAGE', roomId: 'OTHER', message: message(3, '其他房间') });
+  assert.equal(chat.chatPreviewText.value, '我来选');
+  chat.resetChat();
 });
 
 test('room isolation ignores foreign events, while leaving clears chat and stale acknowledgements', () => {

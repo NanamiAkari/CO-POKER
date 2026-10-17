@@ -30,7 +30,7 @@
   function create(options) {
     const { Vue, roomId, playerId, connected, send } = options;
     const { ref, computed, nextTick } = Vue;
-    const chatOpen = ref(true), chatDraft = ref(''), chatMessages = ref([]), chatUnread = ref(0);
+    const chatOpen = ref(false), chatDraft = ref(''), chatMessages = ref([]), chatUnread = ref(0);
     const chatPanel = ref(null), chatError = ref(''), chatSending = ref(false);
     const chatInput = ref(null), chatLog = ref(null), chatStickers = ref(cleanCatalog(options.catalog));
     const chatBubbles = ref(new Map());
@@ -44,6 +44,14 @@
         if (bubble.role === 'SPECTATOR' && (!latest || bubble.id > latest.id)) latest = bubble;
       }
       return latest;
+    });
+    // The collapsed control doubles as a compact latest-message preview. Keep
+    // the full message list intact so opening the panel still shows history.
+    const chatPreview = computed(() => chatMessages.value.at(-1) || null);
+    const chatPreviewText = computed(() => {
+      const latest = chatPreview.value;
+      if (!latest) return '';
+      return latest.kind === 'sticker' ? '发送了一个表情包' : String(latest.text || '');
     });
     const chatDraftLength = computed(() => Array.from(chatDraft.value).length);
     const chatCanSend = computed(() => connected.value && Boolean(roomId.value) && !chatSending.value && Boolean(chatDraft.value.trim()) && Array.from(chatDraft.value.trim()).length <= MAX_LENGTH);
@@ -101,6 +109,13 @@
       chatOpen.value = !chatOpen.value;
       chatPanel.value = null;
       if (chatOpen.value) { chatUnread.value = 0; scrollToLatest(true); }
+    }
+
+    function closeChat() {
+      if (!chatOpen.value) return false;
+      chatOpen.value = false;
+      chatPanel.value = null;
+      return true;
     }
 
     function rememberSelection() {
@@ -249,7 +264,10 @@
       lastFailure = null;
       savedSelection = null;
       composing = false;
-      chatOpen.value = true;
+      // A newly entered room starts with the compact preview control. The
+      // table shell can explicitly reopen it when the player clicks the
+      // preview.
+      chatOpen.value = false;
       chatDraft.value = '';
       chatMessages.value = [];
       chatUnread.value = 0;
@@ -259,9 +277,10 @@
 
     return {
       chatOpen, chatDraft, chatMessages, chatUnread, chatPanel, chatError, chatSending, chatInput, chatLog,
+      chatPreview, chatPreviewText,
       chatBubbles, chatBubbleFor, chatSpectatorBubble,
       chatEmojis: EMOJIS, chatStickers, chatMaxLength: MAX_LENGTH, chatDraftLength, chatCanSend,
-      toggleChat, toggleChatPanel, insertEmoji, sendChat, sendSticker, chatKeydown, chatCompositionStart, chatCompositionEnd,
+      toggleChat, closeChat, toggleChatPanel, insertEmoji, sendChat, sendSticker, chatKeydown, chatCompositionStart, chatCompositionEnd,
       handleChatMessage, resetChat, loadChatStickers, setChatStickers,
       chatSticker: id => chatStickers.value.find(item => item.id === id) || null
     };

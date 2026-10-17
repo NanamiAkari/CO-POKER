@@ -12,6 +12,7 @@ const HandHighlights = require('../public/hand-highlights');
 const { findBestHand } = require('../src/poker');
 const RoomChat = require('../public/room-chat');
 const TomatoInteractions = require('../public/tomato-interactions');
+const TomatoSound = require('../public/tomato-sound');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -26,7 +27,7 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, TomatoSound, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
     localStorage: { getItem: () => null, setItem() {} },
     ...timers, console
@@ -61,6 +62,8 @@ test('room chat renders text and emoji safely while table actions are busy', asy
   const content='<img src=x onerror=alert(1)> 大家好 😀';
   const output=await renderScreen(v=>{
     v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';v.roomId.value='ABC123';v.busy.value=true;v.pending.value=true;
+    assert.equal(v.chatOpen.value,false,'a newly entered room keeps its chat collapsed');
+    v.toggleChat();
     v.chatDraft.value='继续 👍';
     v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:1,playerId:'B',role:'PLAYER',kind:'text',text:content,timestamp:1,clientMessageId:'test-1'}});
     assert.equal(v.chatCanSend.value,true,'game action locks must not lock chat');
@@ -70,15 +73,16 @@ test('room chat renders text and emoji safely while table actions are busy', asy
   assert.match(output,/&lt;img src=x onerror=alert\(1\)&gt; 大家好 😀/);
   assert.doesNotMatch(output,/<img src=x/);
   assert.match(output,/选择 emoji/);
-  const empty=await renderScreen(v=>{v.inRoom.value=true;v.chatPanel.value='stickers';});
+  const empty=await renderScreen(v=>{v.inRoom.value=true;v.toggleChat();v.chatPanel.value='stickers';});
   assert.match(empty,/暂无表情包/);
   const folded=await renderScreen(v=>{
-    v.inRoom.value=true;v.roomId.value='ABC123';v.playerId.value='A';v.toggleChat();
+    v.inRoom.value=true;v.roomId.value='ABC123';v.playerId.value='A';
     v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:1,playerId:'B',role:'SPECTATOR',kind:'text',text:'观战中',timestamp:1}});
     assert.equal(v.chatUnread.value,1);
   });
   assert.match(folded,/aria-label="打开房间聊天"/);
   assert.match(folded,/class="chat-unread">1</);
+  assert.match(folded,/观战中/,'collapsed chat previews the latest message');
   assert.doesNotMatch(folded,/id="room-chat-panel"/);
 });
 
@@ -268,15 +272,39 @@ test('holding a coin keeps remaining public coins visible but disabled', async (
   assert.equal((table.match(/class="playing-card[^\"]*" aria-label="牌背"/g) || []).length, 7);
 });
 
-test('opponent seats expose a tomato action without coupling it to coin controls', async () => {
+test('opponent seat actions stay hidden until the seat is opened', async () => {
   let view;
   const table = await renderScreen(v => {
     view = v;
     v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER'; v.roomId.value = 'ABC123';
     Object.assign(v.state, {phase:'ROUND_1_COINS',players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}]});
   });
-  assert.match(table, /aria-label="向 B 扔番茄"/);
-  assert.doesNotMatch(table, /向 A 扔番茄/);
+  assert.doesNotMatch(table, /class="tomato-button"/);
+  assert.doesNotMatch(table, /seat-action-menu/);
+  assert.match(table, /打开 B 的互动动作/);
+  assert.doesNotMatch(table, /打开 A 的互动动作/);
+  view.toggleSeatActions('B');
+  const opened = await renderScreen(v => {
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER'; v.roomId.value = 'ABC123';
+    Object.assign(v.state, {phase:'ROUND_1_COINS',players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}]});
+    v.toggleSeatActions('B');
+  });
+  assert.match(opened, /class="seat-action-menu"/);
+  assert.match(opened, /aria-label="向 B 扔番茄"/);
+  assert.match(opened, /扔番茄/);
+  assert.equal(view.activeSeatAction.value, 'B');
+  view.toggleSeatActions('B');
+  assert.equal(view.activeSeatAction.value, null, 'selecting the open seat closes its menu');
+  view.toggleSeatActions('A');
+  assert.equal(view.activeSeatAction.value, null, 'a player cannot target themself');
+  view.toggleSeatActions('missing');
+  assert.equal(view.activeSeatAction.value, null, 'a stale seat cannot be selected');
+  view.toggleSeatActions('B');
+  view.closeSeatActions();
+  assert.equal(view.activeSeatAction.value, null, 'outside clicks can dismiss the open menu');
+  view.connected.value = false;
+  view.toggleSeatActions('B');
+  assert.equal(view.activeSeatAction.value, null, 'disconnected clients cannot open an action menu');
   assert.equal(typeof view.sendTomato, 'function');
   assert.equal(view.sendTomato('A'), false);
 });

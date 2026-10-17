@@ -27,7 +27,7 @@ npm start
 
 创建房间可开启“牌堆加入大小王”（默认关闭），使用 54 张牌。大王只替代红桃／方块，小王只替代黑桃／梅花；两张王均可能发到手牌或公共牌，系统自动求出最大合法组合。结算和悬浮提示显示替代牌面及大小王来源标记；整场结束后房主也可修改这项规则。
 
-音效、减少动效、演出速度和昵称保存在当前浏览器本地。音效默认关闭，减少动效初始值遵循系统偏好。
+音效、减少动效、演出速度和昵称保存在当前浏览器本地。音效默认关闭，减少动效初始值遵循系统偏好；打开音效后，番茄命中会播放短促的果肉炸开声。
 
 - 持币后不能直接拿公共区另一枚，先点击自己的硬币归还。
 - 从硬币 N 到 1 比较，牌力应逐步变强或相等；失败也会展示完全部比较。
@@ -63,6 +63,7 @@ npm start
 | `public/stickers/catalog.json` | 表情包清单，当前为空 |
 | `public/game.css` | 当前界面样式 |
 | `public/tabletop-art.js` | 无外部依赖的 SVG 牌面、牌背、硬币；兼容浏览器与 CommonJS |
+| `public/tomato-interactions.js`、`public/tomato-sound.js` | 番茄飞行、爆开视觉和本地生成的果肉飞溅音效 |
 | `public/settlement.css`、`public/settlement-details.js` | 结算顺序带、局部结果标记、悬浮牌组详情与比较原因 |
 | `public/vendor/vue.global.prod.js` | 本地 Vue 运行时 |
 | `src/poker.js`、`src/game.js`、`src/server.js` | 牌型、状态机、HTTP／WebSocket 房间服务 |

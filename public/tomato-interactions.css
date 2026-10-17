@@ -1,86 +1,127 @@
-/* A playful table interaction that remains above cards without blocking input. */
+/* One effect owns its flight, then replaces the fruit with pulp and juice. */
 .tomato-flight {
   position: fixed;
   z-index: 160;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
+  width: 52px;
+  height: 52px;
   pointer-events: none;
   user-select: none;
-  font-size: 31px;
-  line-height: 1;
-  filter: drop-shadow(0 4px 5px #07120d99);
-  transform-origin: 50% 60%;
-  animation: tomato-flight-path 900ms cubic-bezier(.2,.72,.28,1) both;
+  transform-origin: 50% 50%;
+  animation: tomato-flight-path var(--tomato-flight-ms, 1100ms) cubic-bezier(.25,.5,.58,.95) both;
 }
+
+.tomato-projectile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(3px 7px 4px #09100d80);
+  animation: tomato-tumble var(--tomato-flight-ms, 1100ms) linear both;
+}
+
+.tomato-projectile[hidden],
+.tomato-impact .tomato-projectile { display: none; }
 
 .tomato-flight.tomato-impact {
-  animation: tomato-impact 240ms cubic-bezier(.2,.8,.28,1) both;
+  animation: none;
+  transform: translate(var(--tomato-x), var(--tomato-y));
 }
 
-.tomato-flight.tomato-impact::after {
-  content: '✦';
+.tomato-burst { display: none; position: absolute; inset: 0; pointer-events: none; }
+.tomato-impact .tomato-burst { display: block; }
+
+.tomato-splat {
   position: absolute;
-  color: #f4d38a;
-  font-size: 18px;
-  animation: tomato-spark 240ms ease-out both;
+  width: 142px;
+  height: 142px;
+  max-width: none;
+  left: 50%;
+  top: 50%;
+  filter: drop-shadow(0 2px 2px #42101359);
+  transform: translate(-50%, -50%);
+  animation: tomato-splat var(--tomato-impact-ms, 1500ms) ease-out both;
 }
 
-.tomato-hit {
-  animation: tomato-hit 240ms ease-out;
+.tomato-droplet,
+.tomato-seed {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
 }
 
-.tomato-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 26px;
-  padding: 4px 9px;
-  border: 1px solid #c98b5c80;
-  border-radius: 999px;
-  background: #3c2622c7;
-  color: #f4d7af;
-  font-size: 11px;
-  line-height: 1;
-  transition: transform .16s ease, background .16s ease, border-color .16s ease;
+.tomato-droplet {
+  width: 9px;
+  height: 16px;
+  border-radius: 60% 40% 44% 56% / 75% 74% 26% 25%;
+  background: radial-gradient(ellipse at 35% 25%, #ff9970 0%, #ee563b 32%, #cf302b 68%, #99232a 100%);
+  box-shadow: 1px 2px 2px #40111966;
+  animation: tomato-droplet 510ms cubic-bezier(.14,.58,.38,.95) var(--drop-delay,0ms) both;
 }
 
-.tomato-button:hover:not(:disabled) {
-  border-color: #e0a86e;
-  background: #6e382bcf;
-  transform: translateY(-1px);
+.tomato-seed {
+  width: 4px;
+  height: 7px;
+  border-radius: 50% 50% 40% 40%;
+  background: #f8db98;
+  border: 1px solid #d89753;
+  animation: tomato-seed 530ms ease-out var(--seed-delay,0ms) both;
 }
 
-.tomato-button:active:not(:disabled) { transform: translateY(1px) scale(.97); }
-.tomato-button:disabled { opacity: .42; }
+.tomato-hit { animation: tomato-hit 260ms ease-out; }
 
 @keyframes tomato-flight-path {
-  0% { opacity: 0; transform: translate(0, 0) rotate(-18deg) scale(.42); }
+  0% { opacity: 0; transform: translate(0, 0) scale(.58); }
+  8% { opacity: 1; }
+  48% { opacity: 1; transform: translate(var(--tomato-half-x), var(--tomato-mid-y)) scale(1.2); }
+  100% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) scale(1); }
+}
+
+@keyframes tomato-tumble {
+  from { transform: rotate(-35deg); }
+  to { transform: rotate(420deg); }
+}
+
+@keyframes tomato-splat {
+  0% { opacity: 1; transform: translate(-50%,-50%) scale(.17) rotate(-8deg); }
+  12% { opacity: 1; transform: translate(-50%,-50%) scale(1.1) rotate(3deg); }
+  22% { opacity: 1; transform: translate(-50%,-50%) scale(.97) rotate(1deg); }
+  67% { opacity: .96; transform: translate(-50%,-50%) scale(1) rotate(1deg); }
+  100% { opacity: 0; transform: translate(-50%,-45%) scale(1.04) rotate(1deg); }
+}
+
+@keyframes tomato-droplet {
+  0% { opacity: 0; transform: translate(-50%,-50%) rotate(var(--drop-rotation)) scale(.2); }
   12% { opacity: 1; }
-  52% { transform: translate(var(--tomato-half-x), var(--tomato-mid-y)) rotate(16deg) scale(1.08); }
-  100% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) rotate(360deg) scale(1); }
+  68% { opacity: .9; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--drop-x)),calc(-50% + var(--drop-y))) rotate(var(--drop-rotation)) scale(var(--drop-scale)); }
 }
 
-@keyframes tomato-impact {
-  0% { opacity: 1; transform: translate(var(--tomato-x), var(--tomato-y)) scale(1); }
-  45% { transform: translate(var(--tomato-x), var(--tomato-y)) scale(1.3) rotate(-12deg); }
-  100% { opacity: 0; transform: translate(var(--tomato-x), var(--tomato-y)) scale(.84) rotate(8deg); }
-}
-
-@keyframes tomato-spark {
-  from { opacity: .9; transform: scale(.4) rotate(0); }
-  to { opacity: 0; transform: scale(1.65) rotate(90deg); }
+@keyframes tomato-seed {
+  0% { opacity: 0; transform: translate(-50%,-50%) rotate(-25deg) scale(.2); }
+  15% { opacity: 1; }
+  68% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--seed-x)),calc(-50% + var(--seed-y))) rotate(195deg) scale(.5); }
 }
 
 @keyframes tomato-hit {
-  0%, 100% { filter: none; }
-  35% { filter: drop-shadow(0 0 11px #ed9b63); }
+  0%,100% { filter: none; }
+  35% { filter: brightness(1.15); }
+}
+
+.tomato-reduced .tomato-droplet,
+.tomato-reduced .tomato-seed { display: none; }
+.tomato-reduced .tomato-splat { animation: tomato-reduced-fade var(--tomato-impact-ms,500ms) linear both; }
+@keyframes tomato-reduced-fade {
+  0%,55% { opacity: .9; transform: translate(-50%,-50%) scale(.72); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(.72); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tomato-flight { animation-duration: 1ms; }
-  .tomato-flight.tomato-impact { animation-duration: 1ms; }
+  .tomato-flight:not(.tomato-impact) { animation-duration: 1ms; }
+  .tomato-projectile { animation: none; }
+  .tomato-droplet,.tomato-seed { display: none; }
   .tomato-hit { animation: none; }
 }

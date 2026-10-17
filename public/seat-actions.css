@@ -1,0 +1,99 @@
+/* Seat interactions stay attached to the player marker instead of adding a
+   permanent action button to every seat. */
+.seat-action-target {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 108px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.seat-action-target:focus-visible {
+  outline: none;
+}
+
+.seat-action-target .avatar {
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.seat-action-target:not([aria-disabled="true"]):hover .avatar,
+.seat-action-target:not([aria-disabled="true"]):focus-visible .avatar,
+.seat-action-target[aria-expanded="true"] .avatar {
+  border-color: #d8b878;
+  box-shadow: 0 0 11px #d8b87838;
+}
+
+.seat-action-target[aria-disabled="true"] { cursor: default; }
+
+.seat-action-menu {
+  position: absolute;
+  z-index: 48;
+  top: 98px;
+  left: 50%;
+  min-width: 122px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border: 1px solid #d1ad687d;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #24483bfa, #12251ff8);
+  box-shadow: 0 12px 32px #0009, inset 0 1px #fff2;
+  animation: seat-action-menu-in .18s ease both;
+}
+
+.seat-action-menu::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: calc(50% - 6px);
+  width: 11px;
+  height: 11px;
+  transform: rotate(45deg);
+  border-top: 1px solid #d1ad687d;
+  border-left: 1px solid #d1ad687d;
+  background: #24483b;
+}
+
+.seat-action-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #f2dfb2;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.seat-action-item:hover:not(:disabled),
+.seat-action-item:focus-visible:not(:disabled) {
+  border-color: #e1ba70aa;
+  background: #b9734433;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.seat-action-item:active:not(:disabled) { transform: translateY(1px) scale(.97); }
+.seat-action-item:disabled { cursor: not-allowed; opacity: .45; }
+.seat-action-item img { width: 25px; height: 25px; object-fit: contain; filter: drop-shadow(0 2px 3px #5d171866); }
+.seat-action-item img { width: 32px; height: 32px; object-fit: contain; pointer-events: none; filter: drop-shadow(0 3px 2px #0006); }
+
+@keyframes seat-action-menu-in {
+  from { opacity: 0; transform: translate(-50%, -5px) scale(.94); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-action-menu { animation-duration: 1ms; }
+}

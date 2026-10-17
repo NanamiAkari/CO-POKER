@@ -12,6 +12,7 @@
     const name=ref(saved.name || ''), joinCode=ref(''), joinRole=ref('PLAYER');
     const connected=ref(false), pending=ref(false), busy=ref(false), scale=ref(1), fullscreen=ref(false);
     const state=reactive(freshState()), presentation=ref('idle'), revealIndex=ref(0), selectionLit=ref(false), compareIndex=ref(0), verdictVisible=ref(false), summaryIndex=ref(0);
+    const activeSeatAction=ref(null);
     const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null);
     const notice=ref(''), noticeError=ref(false);
     const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
@@ -20,15 +21,15 @@
     let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
     let receivedResultKey='', liveSkipState=null;
     const retiredResultKeys=new Set();
+    const tomatoSound=window.TomatoSound.create({getContext:()=>audioContext,enabled:()=>prefs.sound,isVisible:()=>document.visibilityState!=='hidden'});
     const chat=window.RoomChat.create({Vue,roomId,playerId,connected,send(payload){
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
     }});
-    const tomato=window.TomatoInteractions.create({roomId,playerId,send(payload){
+    const tomato=window.TomatoInteractions.create({roomId,playerId,document,frame:window,reducedMotion:()=>prefs.reducedMotion,onImpact:()=>tomatoSound.playImpact(),send(payload){
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
     }});
-    if(window.innerWidth<1100)chat.chatOpen.value=false;
     const isHost=computed(()=>state.hostId===playerId.value);
     const isResult=computed(()=>Boolean(state.result));
     const resultPresented=computed(()=>['summary','table'].includes(presentation.value));
@@ -39,6 +40,7 @@
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!pending.value&&!busy.value&&COIN_PHASES.includes(state.phase));
+    const canSendTomato=computed(()=>connected.value&&!isResult.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
     const canTakeCoin=computed(()=>canAct.value&&myCoin.value===null);
     const showSkipComparison=computed(()=>role.value==='PLAYER'&&Boolean(state.result)&&['hold','select','gap','compare'].includes(presentation.value));
     const hasSkippedComparison=computed(()=>state.comparisonSkipVotes.includes(playerId.value));
@@ -72,6 +74,27 @@
     function keepComparisonDetail(){clearTimeout(detailCloseTimer);}
     function leaveComparisonDetail(){clearTimeout(detailCloseTimer);detailCloseTimer=setTimeout(()=>{comparisonHover.value=null;},350);}
     function closeComparisonDetail(){clearTimeout(detailCloseTimer);comparisonHover.value=null;comparisonFocus.value=null;comparisonPinned.value=null;}
+    function closeSeatActions(){activeSeatAction.value=null;}
+    // Capture before child click handlers (including .stop) so a different
+    // control still closes the open overlay without consuming its action.
+    function dismissTableOverlays(event){
+      if(!inRoom.value)return;
+      const target=event.target;
+      if(!target?.closest?.('.room-chat'))chat.closeChat();
+      if(!target?.closest?.('.seat-action-target,.seat-action-menu'))closeSeatActions();
+    }
+    function toggleSeatActions(id){
+      if(!canSendTomato.value||!state.players.some(player=>player.id===id&&player.id!==playerId.value))return;
+      primeTomatoSound();
+      chat.closeChat();
+      activeSeatAction.value=activeSeatAction.value===id?null:id;
+    }
+    function sendTomatoAndClose(id){
+      if(!canSendTomato.value)return;
+      primeTomatoSound();
+      tomato.sendTomato(id);
+      closeSeatActions();
+    }
     function showFinalTable(){if(!isResult.value)return;closeComparisonDetail();presentation.value='table';}
     function showSettlementSummary(){if(!isResult.value)return;closeComparisonDetail();presentation.value='summary';}
     function finalHandFor(id){return state.finalHands.find(entry=>entry.playerId===id)||null;}
@@ -169,10 +192,21 @@
       }
       return true;
     }
+    function ensureAudioContext(){
+      if(audioContext||!prefs.sound)return audioContext;
+      try { audioContext=new (window.AudioContext||window.webkitAudioContext)(); } catch { audioContext=null; }
+      return audioContext;
+    }
+    function primeTomatoSound(){
+      if(!prefs.sound)return;
+      ensureAudioContext();
+      void tomatoSound.prime();
+    }
     function tone(kind='coin') {
       if(!prefs.sound)return;
       try {
-        audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+        ensureAudioContext();
+        if(!audioContext)return;
         if(audioContext.state==='suspended')audioContext.resume();
         const t=audioContext.currentTime, oscillator=audioContext.createOscillator(), gain=audioContext.createGain();
         oscillator.type=kind==='card'?'sine':'triangle';oscillator.frequency.setValueAtTime(kind==='coin'?900:kind==='win'?660:350,t);
@@ -182,7 +216,7 @@
       } catch { /* Unsupported audio must never block game input. */ }
     }
     function previewSound(){tone('coin');}
-    function openPanel(which){focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
+    function openPanel(which){closeSeatActions();chat.closeChat();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
     function prepareRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;Object.assign(roomSettings,state.options||{});openPanel('room-settings');}
     function saveRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;command('UPDATE_ROOM_OPTIONS',{options:{...roomSettings}});panel.value=null;}
     function closePanel(){if(pending.value&&!inRoom.value)return;panel.value=null;nextTick(()=>focusBeforePanel?.focus?.());}
@@ -196,7 +230,7 @@
         event.preventDefault();goRulePage(ruleStep.value+(['ArrowLeft','ArrowUp','PageUp'].includes(event.key)?-1:1));
       }
     }
-    function trapFocus(event){if(event.key==='Escape'&&inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
+    function trapFocus(event){if(event.key==='Escape'){closeSeatActions();chat.closeChat();if(inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
     function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
     async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();resize();}catch{notify('当前浏览器不支持全屏',true);}}
     function copyRoomLegacy(text){
@@ -238,7 +272,8 @@
     function resetRoom(text=''){
       chat.resetChat();
       tomato.reset();
-      if(window.innerWidth<1100)chat.chatOpen.value=false;
+      tomatoSound.reset();
+      closeSeatActions();
       completedComparisonCount.value=0;closeComparisonDetail();
       generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
       receivedResultKey='';liveSkipState=null;retiredResultKeys.clear();for(const finish of [...comparisonWaiters])finish();
@@ -348,9 +383,12 @@
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
-    onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.getElementById('boot-status').hidden=true;});
-    onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+    watch(()=>prefs.sound,enabled=>{if(!enabled)tomatoSound.reset();});
+    watch([canSendTomato,()=>state.players.map(player=>player.id)],()=>{if(!canSendTomato.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
+    watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
+    onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
+    onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
