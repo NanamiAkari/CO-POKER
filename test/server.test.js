@@ -89,18 +89,23 @@ test('validates room options and publishes authoritative menu state', async t =>
   assert.equal(f.server.manager.rooms.size, 1);
 });
 
-test('rejects duplicate names and a sixth player without changing membership', async t => {
+test('rejects duplicate names and a ninth player without changing membership', async t => {
   const f = await fixture(t); const r = await f.room({spectatorSlots:1});
   const newcomer = await f.connect();
   const duplicate = await newcomer.request({type:'JOIN_ROOM', playerId:' a ', roomId:r.roomId}, 'ERROR');
   assert.match(duplicate.message, /already in use/);
-  for (const id of ['c','d','e']) {
+  for (const id of ['c','d','e','f','g','h']) {
     const client = await f.connect();
     await client.request({type:'JOIN_ROOM', playerId:id, roomId:r.roomId}, 'ROOM_STATE');
   }
-  const full = await newcomer.request({type:'JOIN_ROOM', playerId:'f', roomId:r.roomId}, 'ERROR');
+  const full = await newcomer.request({type:'JOIN_ROOM', playerId:'i', roomId:r.roomId}, 'ERROR');
   assert.match(full.message, /full/);
-  assert.equal(f.server.manager.get(r.roomId).clients.size, 5);
+  assert.equal(f.server.manager.get(r.roomId).clients.size, 8);
+  const started = await r.host.request({type:'START_GAME', roomId:r.roomId}, 'GAME_STARTED');
+  assert.equal(started.state.maxPlayers, 8);
+  const game = f.server.manager.get(r.roomId).game;
+  assert.equal(game.players.length, 8);
+  assert.equal(game.coinTable.area.size, 8);
 });
 
 test('protects all room actions from cross-room and unjoined connections', async t => {

@@ -22,6 +22,22 @@ test('runs all four coin rounds and reveals community cards progressively', () =
   assert.equal(room.players.every(player => player.finalHand), true);
 });
 
+test('supports eight players with coins one through eight and seven comparisons', () => {
+  const players = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const room = new GameRoom({ players, random: () => 0.5 });
+  room.start();
+  assert.equal(room.players.length, 8);
+  assert.deepEqual([...room.coinTable.area], [1, 2, 3, 4, 5, 6, 7, 8]);
+  for (let round = 0; round < 4; round += 1) {
+    players.forEach((player, index) => room.moveCoin(index + 1, player));
+    if (round < 3) assert.deepEqual([...room.coinTable.area], [1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+  assert.ok([PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(room.phase));
+  assert.equal(room.lastResult.comparisons.length, 7);
+  assert.equal((room.successCount + room.failureCount), 1);
+  assert.throws(() => new GameRoom({ players: [...players, 'i'] }), /At most 8 players/);
+});
+
 test('settles adjacent comparisons and treats ties as passing', () => {
   const room = new GameRoom({ players: ['a', 'b'] });
   room.phase = PHASES.FINAL_REVEAL;

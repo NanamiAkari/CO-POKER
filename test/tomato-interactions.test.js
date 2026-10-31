@@ -159,15 +159,21 @@ test('reduced motion still uses the local fruit and splat but skips the particle
   assert.equal(dom.body.children.length,0);
 });
 
-test('impact callback fires once per accepted action and never blocks cleanup', () => {
+test('throw and impact callbacks each fire once per accepted action', () => {
   const timer = clock();
-  const impacts = [];
+  const throws = [], impacts = [];
   const dom = fakeDom();
   dom.source = dom.element({player:'Bob'}, {left:20,top:20,width:40,height:40});
   dom.target = dom.element({player:'Alice'}, {left:220,top:120,width:40,height:40});
   dom.doc.querySelectorAll = selector => selector === '[data-player]' ? [dom.source,dom.target] : [];
-  const controller = TomatoInteractions.create({ roomId:'ABC123', playerId:'Alice', document:dom.doc, frame:dom.doc.defaultView, now:timer.now, setTimeout:timer.setTimeout, clearTimeout:timer.clearTimeout, onImpact:action => impacts.push(action.actionId), flightMs:0, impactMs:100 });
-  controller.handleTomatoMessage({type:'TOMATO_THROW',roomId:'ABC123',action:{actionId:'impact-1',fromPlayerId:'Bob',toPlayerId:'Alice',timestamp:1000}});
+  const controller = TomatoInteractions.create({ roomId:'ABC123', playerId:'Alice', document:dom.doc, frame:dom.doc.defaultView, now:timer.now, setTimeout:timer.setTimeout, clearTimeout:timer.clearTimeout, onThrow:action => throws.push(action.actionId), onImpact:action => impacts.push(action.actionId), flightMs:0, impactMs:100 });
+  const message = {type:'TOMATO_THROW',roomId:'ABC123',action:{actionId:'impact-1',fromPlayerId:'Bob',toPlayerId:'Alice',timestamp:1000}};
+  assert.ok(controller.handleTomatoMessage(message));
+  assert.deepEqual(throws,['impact-1'],'the whoosh fires when the flight is accepted');
+  assert.deepEqual(impacts,['impact-1']);
+  assert.equal(controller.handleTomatoMessage(message),false);
+  controller.handleTomatoMessage({...message,roomId:'OTHER',action:{...message.action,actionId:'foreign'}});
+  assert.deepEqual(throws,['impact-1'],'duplicates and foreign rooms do not replay the whoosh');
   assert.deepEqual(impacts,['impact-1']);
   timer.advance(100);
   assert.equal(controller.tomatoFlights.length,0);

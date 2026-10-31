@@ -7,6 +7,7 @@
   <title>CO-POKER · 德扑</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/game.css?v=20260930b">
+  <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
   <link rel="stylesheet" href="/settlement.css?v=20261005-controls">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
@@ -35,7 +36,7 @@
             <button class="gold-button" @click="openPanel('create')">创建房间 <span aria-hidden="true">↗</span></button>
             <button class="text-button" @click="openPanel('join')">加入房间 <span aria-hidden="true">→</span></button>
           </div>
-          <div class="meta"><span>2–5 人</span><span>联机合作</span></div>
+          <div class="meta"><span>2–8 人</span><span>联机合作</span></div>
           <div class="menu-secondary">
             <button class="menu-tile" @click="openPanel('rules')"><span class="tile-icon">♠</span><span>玩法手册<small>HOW TO PLAY</small></span></button>
             <button class="menu-tile" @click="openPanel('settings')"><span class="tile-icon">☷</span><span>游戏设置<small>SETTINGS</small></span></button>
@@ -63,7 +64,7 @@
           </div>
         </header>
         <div class="table-rim"><div class="table-felt"><span class="felt-emblem">♣</span></div></div>
-        <div class="opponents">
+        <div class="opponents" :class="{compact:compactSeats}">
           <article v-for="(player,i) in opponents" :key="player.id" class="seat" :data-player="player.id">
             <div class="seat-action-target" role="button" :tabindex="canSendTomato?0:-1" :aria-disabled="!canSendTomato" :aria-expanded="activeSeatAction===player.id" :aria-label="`打开 ${player.id} 的互动动作`" @click.stop="toggleSeatActions(player.id)" @keydown.enter.prevent.stop="toggleSeatActions(player.id)" @keydown.space.prevent.stop="toggleSeatActions(player.id)">
               <span class="seat-name"><span class="avatar">{{i%2?'♦':'♣'}}</span>{{player.id}}</span>
@@ -76,9 +77,9 @@
             </div>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(player.id)" :sticker="chatSticker(chatBubbleFor(player.id)?.stickerId)"></chat-bubble>
           </article>
-          <article v-for="n in (state.phase==='WAITING'?Math.max(0,3-opponents.length):0)" :key="'empty'+n" class="seat empty-seat" aria-hidden="true">＋<small>空位</small></article>
+          <article v-for="n in emptySeatCount" :key="'empty'+n" class="seat empty-seat" aria-hidden="true">＋<small>空位</small></article>
         </div>
-        <section v-if="isResult&&presentation!=='table'" class="settlement-order" :style="{'--order-columns':sortedFinalHands.map(()=>'minmax(0,1fr)').join(' 36px ')}" aria-label="最终选币顺序，从大号硬币到一号硬币">
+        <section v-if="isResult&&presentation!=='table'" class="settlement-order" :class="{dense:denseSettlement}" :style="{'--order-columns':sortedFinalHands.map(()=>'minmax(0,1fr)').join(' var(--order-gap,36px) ')}" aria-label="最终选币顺序，从大号硬币到一号硬币">
           <div class="order-heading"><span>最终选币顺序</span><span>牌力应由弱到强 <i aria-hidden="true">→</i></span></div>
           <div class="order-line">
             <ol class="order-players">
@@ -98,13 +99,13 @@
           <h2>等待玩家</h2>
           <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span><span v-if="state.options?.includeJokers">含大小王 · 54 张</span></div>
           <button v-if="isHost" class="gold-button" :disabled="state.players.length<2||pending||!connected" @click="command('START_GAME')">开始游戏 <span aria-hidden="true">▷</span></button>
-          <p v-else>等待房主开始</p><p>{{state.players.length}} / 5 已入座 · 房间号 {{roomId}}</p>
+          <p v-else>等待房主开始</p><p>{{state.players.length}} / {{maxPlayers}} 已入座 · 房间号 {{roomId}}</p>
         </section>
         <template v-else>
           <div class="deck" aria-hidden="true"><img :src="cardBack" alt=""></div>
           <div class="board" :class="{deal:presentation==='deal'}" aria-label="公共牌区"><playing-card v-for="(card,i) in communitySlots" :key="i" :card="card" :style="{'--order':i+handCount}"></playing-card></div>
           <nav class="phase-track" aria-label="牌局进度"><span v-for="(phase,i) in phases" :key="phase" class="phase-dot" :class="{active:phaseIndex===i,done:phaseIndex>i}" :title="phase" :aria-label="phase+(phaseIndex===i?'，当前阶段':'')"></span></nav>
-          <div class="coin-tray" data-public-anchor v-show="availableCoins.length" aria-label="公共硬币区"><button v-for="coin in availableCoins" :key="coin" class="coin-button" :data-live-coin="coin" :disabled="!canTakeCoin" :aria-label="`选择硬币 ${coin}`" @click="takeCoin(coin)"><img :src="coinImage(coin)" :alt="`硬币 ${coin}`"></button></div>
+          <div class="coin-tray" :class="{compact:availableCoins.length>5}" data-public-anchor v-show="availableCoins.length" aria-label="公共硬币区"><button v-for="coin in availableCoins" :key="coin" class="coin-button" :data-live-coin="coin" :disabled="!canTakeCoin" :aria-label="`选择硬币 ${coin}`" @click="takeCoin(coin)"><img :src="coinImage(coin)" :alt="`硬币 ${coin}`"></button></div>
           <div v-if="busy&&!isResult" class="phase-breath" role="status">{{presentation==='deal'?'♠  ♥  ♣  ♦':'· · ·'}}</div>
         </template>
         <div v-if="role==='PLAYER'" class="self-zone">
@@ -237,12 +238,12 @@
   </div>
 </div>
 <script src="/vendor/vue.global.prod.js"></script>
-<script src="/tabletop-art.js?v=20261005-jokers"></script>
+<script src="/tabletop-art.js?v=20261031-eight-coins"></script>
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
 <script src="/room-chat.js?v=20261005-table-chat"></script>
-<script src="/tomato-sound.js?v=20261017-tomato-sound"></script>
+<script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261006-spectator"></script>
+<script src="/game-client.js?v=20261031-landlord-combo"></script>
 </body>
 </html>

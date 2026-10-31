@@ -93,12 +93,12 @@ test('resolved jokers show the chosen card and a source stamp without cache coll
   }
 });
 
-test('card back and five engraved tokens are valid local SVG assets', () => {
+test('card back and eight engraved tokens are valid local SVG assets', () => {
   const back = svgFrom(art.cardBack);
   assert.match(back, /viewBox="0 0 140 196"/);
   assert.match(back, /<pattern id="weave"/);
   const coins = new Set();
-  for (let number = 1; number <= 5; number += 1) {
+  for (let number = 1; number <= 8; number += 1) {
     const image = art.coinImage(number);
     const svg = svgFrom(image);
     assert.ok(svg.includes(`<title>硬币 ${number}</title>`));
@@ -106,7 +106,7 @@ test('card back and five engraved tokens are valid local SVG assets', () => {
     assert.match(svg, /viewBox="0 0 140 140"/);
     coins.add(image);
   }
-  assert.equal(coins.size, 5);
+  assert.equal(coins.size, 8);
 });
 
 test('browser script exposes the same dependency-free API as CommonJS', () => {
@@ -122,7 +122,7 @@ test('browser script exposes the same dependency-free API as CommonJS', () => {
     assert.equal(browserArt.cardImage(card), art.cardImage(card));
     assert.equal(browserArt.cardText(card), art.cardText(card));
   }
-  for (let number = 1; number <= 5; number += 1) assert.equal(browserArt.coinImage(number), art.coinImage(number));
+  for (let number = 1; number <= 8; number += 1) assert.equal(browserArt.coinImage(number), art.coinImage(number));
 });
 
 test('invalid input cannot generate broken or injected SVG and empty cards are supported', () => {
@@ -134,7 +134,7 @@ test('invalid input cannot generate broken or injected SVG and empty cards are s
     assert.throws(() => art.cardImage(card), TypeError);
     assert.throws(() => art.cardText(card), TypeError);
   }
-  for (const number of [0, 6, NaN, 2.5, '1', null]) assert.throws(() => art.coinImage(number), RangeError);
+  for (const number of [0, 9, NaN, 2.5, '1', null]) assert.throws(() => art.coinImage(number), RangeError);
 });
 
 test('invalid joker colors, partial substitutions, and opposite-color suits are rejected', () => {

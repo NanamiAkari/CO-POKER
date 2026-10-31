@@ -2,26 +2,31 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const TomatoSound = require('../public/tomato-sound');
 
-function fakeContext({ state = 'running', resume = null, sampleRate = 8000 } = {}) {
+function fakeContext({ state = 'running', resume = null, decodeError = null } = {}) {
   const sources = [];
+  let decodes = 0;
+  let resumes = 0;
+  const decoder = new TextDecoder();
   const context = {
     state,
-    sampleRate,
+    sampleRate: 44100,
     destination: {},
-    resume: resume || (() => Promise.resolve()),
-    createBuffer(channels, length, rate) {
-      const data = Array.from({ length: channels }, () => new Float32Array(length));
-      return {
-        channels,
-        length,
-        sampleRate: rate,
-        copyToChannel(values, channel) { data[channel].set(values); },
-        getChannelData(channel) { return data[channel]; },
-        data,
-      };
+    get resumes() { return resumes; },
+    get decodes() { return decodes; },
+    resume: resume || (() => { resumes += 1; context.state = 'running'; return Promise.resolve(); }),
+    decodeAudioData(data, success, fail) {
+      decodes += 1;
+      if (decodeError) {
+        if (fail) fail(decodeError);
+        return Promise.reject(decodeError);
+      }
+      const decoded = { duration: 0.5, url: decoder.decode(new Uint8Array(data)) };
+      if (success) success(decoded);
+      return Promise.resolve(decoded);
     },
     createGain() {
-      return { gain: { value: 1 }, connect() {}, disconnect() {} };
+      const node = { gain: { value: 1 }, connect() {}, disconnect() { this.disconnected = true; } };
+      return node;
     },
     createBufferSource() {
       const source = {
@@ -29,8 +34,7 @@ function fakeContext({ state = 'running', resume = null, sampleRate = 8000 } = {
         onended: null,
         started: 0,
         stopped: 0,
-        connected: [],
-        connect(node) { this.connected.push(node); },
+        connect() {},
         disconnect() { this.disconnected = true; },
         start() { this.started += 1; sources.push(this); },
         stop() { this.stopped += 1; },
@@ -42,74 +46,128 @@ function fakeContext({ state = 'running', resume = null, sampleRate = 8000 } = {
   return context;
 }
 
-test('createSamples returns a finite deterministic wet impact lasting about half a second', () => {
-  const first = TomatoSound.createSamples(8000);
-  const second = TomatoSound.createSamples(8000);
-  assert.equal(first.length, Math.floor(8000 * TomatoSound.DURATION_SECONDS));
-  assert.deepEqual(first, second);
-  assert.ok(first.some(value => Math.abs(value) > 0.02));
-  assert.ok([...first].every(Number.isFinite));
-  assert.ok(Math.max(...first) <= 1 && Math.min(...first) >= -1);
+function fakeFetch({ ok = true, failFor = null } = {}) {
+  const calls = [];
+  const encoder = new TextEncoder();
+  const impl = async url => {
+    calls.push(url);
+    if (failFor && url.includes(failFor)) return { ok: false, arrayBuffer: async () => new ArrayBuffer(0) };
+    return { ok, arrayBuffer: async () => encoder.encode(url).buffer };
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+test('prime preloads both the throw and impact recordings and caches them', async () => {
+  const context = fakeContext({ state: 'suspended' });
+  const fetchImpl = fakeFetch();
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fetchImpl });
+
+  assert.equal(await sound.prime(), true);
+  assert.equal(context.resumes, 1);
+  assert.equal(await sound.preload(), true);
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.ok(fetchImpl.calls.some(url => /tomato-splat\.wav/.test(url)));
+  assert.ok(fetchImpl.calls.some(url => /tomato-throw\.wav/.test(url)));
+  assert.equal(context.decodes, 2);
+
+  assert.equal(sound.playThrow(), true);
+  assert.equal(sound.playImpact(), true);
+  assert.match(context.sources[0].buffer.url, /tomato-throw\.wav/);
+  assert.match(context.sources[1].buffer.url, /tomato-splat\.wav/);
+  assert.equal(await sound.preload(), true);
+  assert.equal(fetchImpl.calls.length, 2, 'both decoded buffers are cached');
+  assert.equal(context.decodes, 2, 'each recording is decoded once');
 });
 
-test('prime obtains and resumes the shared context, swallowing autoplay rejection', async () => {
-  let resumes = 0;
-  const context = fakeContext({ state: 'suspended', resume: () => { resumes += 1; return Promise.reject(new Error('autoplay')); } });
-  const sound = TomatoSound.create({ getContext: () => context });
+test('prime swallows autoplay rejection without throwing', async () => {
+  const context = fakeContext({ state: 'suspended', resume: () => Promise.reject(new Error('autoplay')) });
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fakeFetch() });
   assert.equal(await sound.prime(), false);
-  assert.equal(resumes, 1);
 });
 
-test('playImpact respects enabled, visibility and running-state gates', () => {
-  const context = fakeContext();
+test('playback respects enabled, visibility and running-state gates before loading', () => {
   let calls = 0;
+  const context = fakeContext();
+  const fetchImpl = fakeFetch();
   const getContext = () => { calls += 1; return context; };
-  assert.equal(TomatoSound.create({ getContext, enabled: false }).playImpact(), false);
+  const disabled = TomatoSound.create({ getContext, fetch: fetchImpl, enabled: false });
+  assert.equal(disabled.playImpact(), false);
+  assert.equal(disabled.playThrow(), false);
   assert.equal(calls, 0, 'disabled audio does not request a context');
-  assert.equal(TomatoSound.create({ getContext, isVisible: false }).playImpact(), false);
+  assert.equal(fetchImpl.calls.length, 0, 'disabled audio does not start a download');
+  const hidden = TomatoSound.create({ getContext, fetch: fetchImpl, isVisible: false });
+  assert.equal(hidden.playImpact(), false);
+  assert.equal(hidden.playThrow(), false);
   assert.equal(calls, 0, 'hidden audio does not request a context');
   context.state = 'suspended';
-  assert.equal(TomatoSound.create({ getContext }).playImpact(), false);
-  assert.equal(calls, 1);
-});
-
-test('buffer is cached and no more than three impacts overlap', () => {
-  const context = fakeContext();
-  let buffers = 0;
-  const original = context.createBuffer;
-  context.createBuffer = (...args) => { buffers += 1; return original.apply(context, args); };
-  const sound = TomatoSound.create({ getContext: () => context });
-  assert.equal(sound.playImpact(), true);
-  assert.equal(sound.playImpact(), true);
-  assert.equal(sound.playImpact(), true);
+  const sound = TomatoSound.create({ getContext, fetch: fetchImpl });
   assert.equal(sound.playImpact(), false);
-  assert.equal(sound.activeCount, 3);
-  assert.equal(buffers, 1);
-  context.sources[0].onended();
-  assert.equal(sound.activeCount, 2);
-  assert.equal(sound.playImpact(), true);
+  assert.equal(sound.playThrow(), false);
+  assert.equal(calls, 2, 'each suspended playback check asks for the context once');
 });
 
-test('reset stops and clears all active sources', () => {
+test('the first action warms only the requested asset and later voices are capped per kind', async () => {
   const context = fakeContext();
-  const sound = TomatoSound.create({ getContext: () => context });
+  const fetchImpl = fakeFetch();
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fetchImpl });
+  assert.equal(sound.playThrow(), false, 'the very first throw starts the download instead of waiting');
+  assert.equal(await sound.preload(), true);
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(sound.playImpact(), true);
+  assert.equal(sound.playThrow(), true);
+  for (let index = 0; index < 4; index += 1) sound.playThrow();
+  for (let index = 0; index < 4; index += 1) sound.playImpact();
+  assert.equal(sound.activeCount, 6, 'three impacts and three throws may overlap');
+  assert.equal(fetchImpl.calls.length, 2, 'both recordings are fetched once');
+  context.sources[1].onended();
+  assert.equal(sound.activeCount, 5);
+  assert.equal(sound.playThrow(), true);
+});
+
+test('reset stops and clears both voice kinds', async () => {
+  const context = fakeContext();
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fakeFetch() });
+  await sound.preload();
   sound.playImpact();
-  sound.playImpact();
+  sound.playThrow();
   assert.equal(sound.activeCount, 2);
   sound.reset();
   assert.equal(sound.activeCount, 0);
   assert.deepEqual(context.sources.map(source => source.stopped), [1, 1]);
-  // reset is idempotent and does not throw if a source has ended already.
   sound.reset();
 });
 
-test('turning sound off prevents a later impact after reset', () => {
+test('turning sound off prevents playback after reset', async () => {
   const context = fakeContext();
   let enabled = true;
-  const sound = TomatoSound.create({ getContext: () => context, enabled: () => enabled });
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fakeFetch(), enabled: () => enabled });
+  assert.equal(await sound.preload(), true);
   assert.equal(sound.playImpact(), true);
   sound.reset();
   enabled = false;
   assert.equal(sound.playImpact(), false);
+  assert.equal(sound.playThrow(), false);
+  assert.equal(await sound.preload(), false);
   assert.equal(sound.activeCount, 0);
+});
+
+test('a missing recording degrades to silence without disabling the other recording', async () => {
+  const context = fakeContext();
+  const sound = TomatoSound.create({ getContext: () => context, fetch: fakeFetch({ failFor: 'tomato-throw' }) });
+  assert.equal(await sound.preload(), false);
+  assert.equal(sound.playThrow(), false);
+  assert.equal(sound.playImpact(), true, 'the splat still plays when only the throw whoosh is unavailable');
+
+  for (const fetchImpl of [fakeFetch({ ok: false }), async () => { throw new Error('offline'); }]) {
+    const broken = TomatoSound.create({ getContext: () => fakeContext(), fetch: fetchImpl });
+    assert.equal(await broken.preload(), false);
+    assert.equal(broken.playImpact(), false);
+    assert.equal(broken.playThrow(), false);
+  }
+  const broken = fakeContext({ decodeError: new Error('bad wav') });
+  const soundWithBadDecode = TomatoSound.create({ getContext: () => broken, fetch: fakeFetch() });
+  assert.equal(await soundWithBadDecode.preload(), false);
+  assert.equal(soundWithBadDecode.playImpact(), false);
+  assert.equal(soundWithBadDecode.playThrow(), false);
 });

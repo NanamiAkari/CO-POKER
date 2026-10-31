@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
-const { GameRoom, PHASES } = require('./game');
+const { GameRoom, PHASES, MAX_PLAYERS } = require('./game');
 const { RoomChat, ChatError } = require('./chat');
 
 function validateOptions(input = {}) {
@@ -70,7 +70,8 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
       const content = fs.readFileSync(file);
       const type = ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
         '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-        '.webp': 'image/webp', '.gif': 'image/gif' })[path.extname(file).toLowerCase()] || 'application/octet-stream';
+        '.webp': 'image/webp', '.gif': 'image/gif', '.wav': 'audio/wav', '.mp3': 'audio/mpeg',
+        '.ogg': 'audio/ogg' })[path.extname(file).toLowerCase()] || 'application/octet-stream';
       const cacheControl = file.endsWith('.html') || file.endsWith('app.js') || file.endsWith('.css')
         ? 'no-cache, must-revalidate'
         : 'public, max-age=300, must-revalidate';
@@ -115,7 +116,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     };
   };
   const state = room => ({
-    roomId: room.id, hostId: room.hostId, options: room.options,
+    roomId: room.id, hostId: room.hostId, options: room.options, maxPlayers: MAX_PLAYERS,
     phase: room.game?.phase || PHASES.WAITING,
     successCount: room.game?.successCount || 0, failureCount: room.game?.failureCount || 0,
     rematchConfirmed: room.game ? [...room.game.rematchConfirmed] : [],
@@ -234,7 +235,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           if (msg.role !== undefined && !['PLAYER', 'SPECTATOR'].includes(msg.role)) throw new Error('Invalid role');
           const role = msg.role || 'PLAYER';
           if (role === 'PLAYER' && room.game) throw new Error('Game already started');
-          if (role === 'PLAYER' && playerIds(room).length >= 5) throw new Error('Player positions are full');
+          if (role === 'PLAYER' && playerIds(room).length >= MAX_PLAYERS) throw new Error('Player positions are full');
           if (role === 'SPECTATOR' && room.spectators.length >= room.options.spectatorSlots) throw new Error('Spectator positions are full');
           ws.room = room; ws.id = id; ws.role = role; room.clients.set(id, ws);
           if (role === 'SPECTATOR') room.spectators.push(id);

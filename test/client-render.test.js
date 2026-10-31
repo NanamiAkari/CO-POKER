@@ -9,7 +9,7 @@ const { renderToString } = require('@vue/server-renderer');
 const Art = require('../public/tabletop-art');
 const SettlementDetails = require('../public/settlement-details');
 const HandHighlights = require('../public/hand-highlights');
-const { findBestHand } = require('../src/poker');
+const { findBestHand, compareHands } = require('../src/poker');
 const RoomChat = require('../public/room-chat');
 const TomatoInteractions = require('../public/tomato-interactions');
 const TomatoSound = require('../public/tomato-sound');
@@ -309,6 +309,38 @@ test('opponent seat actions stay hidden until the seat is opened', async () => {
   assert.equal(view.sendTomato('A'), false);
 });
 
+test('eight-player table renders seven compact seats, eight coins and every action anchor', async () => {
+  const ids=['A','B','C','D','E','F','G','H'];
+  const table=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';v.role.value='PLAYER';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'ROUND_1_COINS',maxPlayers:8,players:ids.map(id=>({id,currentCoin:null})),ownHoleCards:[{rank:14,suit:'s'},{rank:13,suit:'h'}]});
+    assert.equal(v.opponents.value.length,7);
+    assert.equal(v.compactSeats.value,true);
+    assert.equal(v.emptySeatCount.value,0);
+    assert.equal(v.availableCoins.value.length,8);
+  });
+  assert.match(table,/class="opponents compact"/);
+  assert.equal((table.match(/class="seat-action-target"/g)||[]).length,7,'each opponent keeps its own tomato action target');
+  assert.equal((table.match(/aria-label="打开 [B-H] 的互动动作"/g)||[]).length,7);
+  assert.equal((table.match(/aria-label="选择硬币 [1-8]"/g)||[]).length,8);
+  assert.match(table,/aria-label="选择硬币 8"/);
+  assert.match(table,/alt="硬币 8"/);
+  assert.equal((table.match(/data-owner-anchor=/g)||[]).length,8,'seven opponents plus self keep coin anchors');
+  assert.equal((table.match(/data-player=/g)||[]).length,8,'seven opponents plus self keep player anchors');
+});
+
+test('waiting room reports eight seats and fills the remaining places', async () => {
+  const waiting=await renderScreen(v=>{
+    v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'WAITING',maxPlayers:8,players:[{id:'A',currentCoin:null}]});
+    assert.equal(v.emptySeatCount.value,7);
+    assert.equal(v.compactSeats.value,true);
+    assert.equal(v.maxPlayers.value,8);
+  });
+  assert.match(waiting,/1 \/ 8 已入座/);
+  assert.equal((waiting.match(/class="seat empty-seat"/g)||[]).length,7);
+});
+
 test('spectators see every player\'s hole cards during live play while players keep them face-down', async () => {
   const players = [
     {id:'A', currentCoin:1, holeCards:[{rank:14,suit:'h'},{rank:13,suit:'c'}]},
@@ -361,18 +393,28 @@ test('result only renders a single stage with card images, never stacked result 
   }
 });
 
-function fivePlayerResult() {
+function playerResult(count = 5) {
   const cards=[{rank:14,suit:'h'},{rank:13,suit:'c'},{rank:11,suit:'s'},{rank:9,suit:'c'},{rank:7,suit:'s'}];
-  const finalHands=[
-    {playerId:'甲',coin:5,hand:{category:1,categoryName:'一对',tiebreak:[2,14,13,11],cards}},
-    {playerId:'乙',coin:4,hand:{category:0,categoryName:'高牌',tiebreak:[14,13,11,9,7],cards}},
-    {playerId:'丙',coin:3,hand:{category:2,categoryName:'两对',tiebreak:[3,2,14],cards}},
-    {playerId:'丁',coin:2,hand:{category:2,categoryName:'两对',tiebreak:[3,2,14],cards}},
-    {playerId:'戊',coin:1,hand:{category:4,categoryName:'顺子',tiebreak:[8],cards}}
-  ].map(entry=>({...entry,holeCards:cards.slice(0,2)}));
-  const comparisons=[1,-1,0,-1].map((comparison,i)=>({higherCoin:5-i,lowerCoin:4-i,higherPlayerId:finalHands[i].playerId,lowerPlayerId:finalHands[i+1].playerId,comparison,passed:comparison<=0}));
+  const names=['甲','乙','丙','丁','戊','己','庚','辛'].slice(0,count);
+  const hands=[
+    {category:1,categoryName:'一对',tiebreak:[2,14,13,11]},
+    {category:0,categoryName:'高牌',tiebreak:[14,13,11,9,7]},
+    {category:2,categoryName:'两对',tiebreak:[3,2,14]},
+    {category:2,categoryName:'两对',tiebreak:[3,2,14]},
+    {category:4,categoryName:'顺子',tiebreak:[8]}
+  ];
+  const finalHands=names.map((playerId,index)=>{
+    const template=hands[index] || {category:0,categoryName:'高牌',tiebreak:[14,13,11,9,7]};
+    return {playerId,coin:count-index,holeCards:cards.slice(0,2),hand:{...template,cards}};
+  });
+  const comparisons=finalHands.slice(0,-1).map((entry,index)=>{
+    const next=finalHands[index+1];
+    const comparison=compareHands(entry.hand,next.hand);
+    return {higherCoin:entry.coin,lowerCoin:next.coin,higherPlayerId:entry.playerId,lowerPlayerId:next.playerId,comparison,passed:comparison<=0};
+  });
   return {phase:'SETTLEMENT',finalHands:[...finalHands].reverse(),players:finalHands.map(e=>({id:e.playerId,currentCoin:e.coin})),communityCards:cards,failureCount:1,successCount:0,result:{success:false,comparisons}};
 }
+function fivePlayerResult(){return playerResult(5);}
 
 test('five-player settlement retains the full order and completed verdicts, with review details', async () => {
   const output=await renderScreen(v=>{
@@ -486,14 +528,11 @@ test('all-player comparison skip jumps to summary after selection playback', asy
   assert.equal(view.completedComparisonCount.value, view.state.result.comparisons.length);
 });
 
-test('two to five players show one icon-only review marker between each adjacent pair', async () => {
-  for (let count=2;count<=5;count++) {
+test('two to eight players show one icon-only review marker between each adjacent pair', async () => {
+  for (let count=2;count<=8;count++) {
     const output=await renderScreen(v=>{
       v.inRoom.value=true;v.presentation.value='summary';
-      const fixture=fivePlayerResult();
-      fixture.finalHands=fixture.finalHands.filter(entry=>entry.coin<=count);
-      fixture.result.comparisons=fixture.result.comparisons.filter(step=>step.higherCoin<=count);
-      Object.assign(v.state,fixture);
+      Object.assign(v.state,playerResult(count));
     });
     const markers=[...output.matchAll(/<button class="comparison-marker[^>]*>([\s\S]*?)<\/button>/g)];
     assert.equal(markers.length,count-1);

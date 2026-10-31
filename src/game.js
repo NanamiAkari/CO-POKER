@@ -1,5 +1,7 @@
 const { createDeck, shuffle, findBestHand, compareHands, CoinTable } = require('./poker');
 
+const MAX_PLAYERS = 8;
+
 const PHASES = Object.freeze({
   WAITING: 'WAITING',
   ROUND_1_COINS: 'ROUND_1_COINS',
@@ -14,7 +16,7 @@ const PHASES = Object.freeze({
 class GameRoom {
   constructor({ players, handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
     if (!players || players.length < 2) throw new Error('At least two players are required');
-    if (players.length > 5) throw new Error('At most five players are allowed');
+    if (players.length > MAX_PLAYERS) throw new Error(`At most ${MAX_PLAYERS} players are allowed`);
     if (new Set(players).size !== players.length) throw new Error('Player names must be unique');
     if (handCardCount !== 2 && handCardCount !== 3) throw new Error('handCardCount must be 2 or 3');
     if (!['any', 'all-hole'].includes(handUsageRule)) throw new Error('Invalid handUsageRule');
@@ -240,4 +242,4 @@ class GameRoom {
   }
 }
 
-module.exports = { GameRoom, PHASES };
+module.exports = { GameRoom, PHASES, MAX_PLAYERS };

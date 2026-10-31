@@ -5,7 +5,7 @@
   const Art = window.TabletopArt;
   const Highlights = window.HandHighlights;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
-  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
+  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,maxPlayers:8,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
   const saved = (() => { try { return JSON.parse(localStorage.getItem('poker.preferences.v2') || '{}'); } catch { return {}; } })();
   const app = createApp({setup() {
     const inRoom=ref(false), panel=ref(null), ruleStep=ref(0), roomId=ref(''), playerId=ref(''), role=ref('PLAYER');
@@ -26,7 +26,7 @@
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
     }});
-    const tomato=window.TomatoInteractions.create({roomId,playerId,document,frame:window,reducedMotion:()=>prefs.reducedMotion,onImpact:()=>tomatoSound.playImpact(),send(payload){
+    const tomato=window.TomatoInteractions.create({roomId,playerId,document,frame:window,reducedMotion:()=>prefs.reducedMotion,onThrow:()=>tomatoSound.playThrow(),onImpact:()=>tomatoSound.playImpact(),send(payload){
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
     }});
@@ -37,6 +37,12 @@
     const displayedFailureCount=computed(()=>Math.max(0,state.failureCount-(state.result&&!state.result.success&&!resultPresented.value?1:0)));
     const handCount=computed(()=>state.options?.handCardCount || 2);
     const opponents=computed(()=>state.players.filter(p=>p.id!==playerId.value));
+    // Up to eight players share the table. When more than four opponents are
+    // seated the row switches to a compact seat treatment so every seat keeps
+    // its own coin and tomato action anchor inside the fixed 1200x760 canvas.
+    const maxPlayers=computed(()=>state.maxPlayers||8);
+    const emptySeatCount=computed(()=>state.phase==='WAITING'?Math.max(0,maxPlayers.value-1-opponents.value.length):0);
+    const compactSeats=computed(()=>opponents.value.length+emptySeatCount.value>4);
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!pending.value&&!busy.value&&COIN_PHASES.includes(state.phase));
@@ -50,6 +56,7 @@
     const phases=['发牌','翻牌','转牌','河牌','揭示'];
     const phaseIndex=computed(()=>isResult.value?4:COIN_PHASES.indexOf(state.phase));
     const sortedFinalHands=computed(()=>[...state.finalHands].sort((a,b)=>b.coin-a.coin));
+    const denseSettlement=computed(()=>sortedFinalHands.value.length>5);
     const revealEntry=computed(()=>sortedFinalHands.value[revealIndex.value]);
     const comparison=computed(()=>state.result?.comparisons[compareIndex.value]);
     const compareEntries=computed(()=>comparison.value?[comparison.value.higherPlayerId,comparison.value.lowerPlayerId].map(id=>state.finalHands.find(p=>p.playerId===id)).filter(Boolean):[]);
@@ -110,7 +117,7 @@
     const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',leave:'离开牌桌'})[panel.value]);
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];
     const rulePages=[
-      {title:'游戏目标',topic:'目标',intro:'这是一款 2–5 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
+      {title:'游戏目标',topic:'目标',intro:'这是一款 2–8 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
         '默认使用 52 张扑克牌。房主开启“牌堆加入大小王”后为 54 张。手牌只对本人可见，公共牌所有人共用。',
         '有几名玩家，就有几枚硬币：1 号代表最强，2 号代表第二强，依此类推。观战者不占用硬币。',
         '没有下注或筹码输赢。全体玩家共同挑战：累计成功 3 局获胜，累计失败 3 局结束，不要求连续。'
@@ -383,12 +390,16 @@
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
-    watch(()=>prefs.sound,enabled=>{if(!enabled)tomatoSound.reset();});
+    watch(()=>prefs.sound,enabled=>{
+      if(!enabled){tomatoSound.reset();return;}
+      ensureAudioContext();
+      void tomatoSound.preload();
+    },{immediate:true});
     watch([canSendTomato,()=>state.players.map(player=>player.id)],()=>{if(!canSendTomato.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

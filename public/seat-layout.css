@@ -1,0 +1,142 @@
+/* Eight-player seating and coin scaling.
+   The table canvas keeps its fixed 1200x760 design size. Seats share the
+   available top strip equally, and only the dense (more than four opponent
+   slots) variant shrinks their cards, coin and action hit area. Every seat
+   keeps its own data-player/data-owner-anchor pair so coin flights and tomato
+   throws resolve to the right player. */
+
+.opponents {
+  justify-content: center;
+  gap: 14px;
+}
+
+.opponents .seat,
+.opponents .empty-seat {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+  max-width: 190px;
+}
+
+.opponents .seat-name {
+  max-width: 100%;
+}
+
+.opponents.compact {
+  gap: 8px;
+}
+
+.opponents.compact .seat {
+  max-width: 160px;
+}
+
+.opponents.compact .seat-action-target {
+  min-height: 88px;
+}
+
+.opponents.compact .seat-name {
+  font-size: 11px;
+  padding: 3px;
+  margin-bottom: 4px;
+}
+
+.opponents.compact .avatar {
+  width: 22px;
+  height: 22px;
+  margin-right: 5px;
+  font-size: 11px;
+}
+
+.opponents.compact .seat-cards {
+  height: 58px;
+}
+
+.opponents.compact .seat-cards .playing-card {
+  width: 38px;
+  height: 53px;
+  margin: 0 -9px;
+}
+
+.opponents.compact .seat-cards .playing-card:nth-child(1) { transform: rotate(-9deg); }
+.opponents.compact .seat-cards .playing-card:nth-child(2) { transform: rotate(4deg); }
+.opponents.compact .seat-cards .playing-card:nth-child(3) { transform: rotate(13deg); }
+
+.opponents.compact .seat-coin {
+  top: 44px;
+  right: -2px;
+  width: 38px;
+  height: 38px;
+}
+
+.opponents.compact .seat-coin .coin-button {
+  width: 38px;
+  height: 38px;
+}
+
+/* The action menu stays attached to the compact seat and inside the table. */
+.opponents.compact .seat-action-menu {
+  top: 86px;
+}
+
+/* Keep speech bubbles narrow enough not to cover a neighbouring seat. */
+.opponents.compact .seat > .chat-bubble {
+  top: 100px;
+  left: calc(50% - 70px);
+  width: 140px;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.opponents.compact .seat > .chat-bubble .chat-bubble-text {
+  max-height: 30px;
+}
+
+.opponents.compact .empty-seat {
+  max-width: 160px;
+  height: 96px;
+  font-size: 22px;
+}
+
+.opponents.compact .empty-seat small {
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+/* More than five public coins must still fit the fixed coin tray. */
+.coin-tray.compact {
+  gap: 12px;
+}
+
+.coin-tray.compact .coin-button {
+  width: 50px;
+  height: 50px;
+}
+
+/* The settlement order line interleaves a 36px marker column by default.
+   Six or more players receive a narrower gap and slightly smaller coin so
+   names and markers continue to line up without leaving the table. */
+.settlement-order.dense {
+  --order-gap: 22px;
+  left: 84px;
+  right: 84px;
+  padding: 12px 18px;
+}
+
+.settlement-order.dense .order-players img {
+  width: 36px;
+  height: 36px;
+}
+
+.settlement-order.dense .order-player-name {
+  max-width: 68px;
+  font-size: 11px;
+}
+
+.settlement-order.dense .order-player-name small {
+  margin-left: 4px;
+  padding: 0 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opponents.compact .seat-cards .playing-card { transition: none; }
+}

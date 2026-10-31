@@ -30,6 +30,7 @@
     const setTimer = typeof options.setTimeout === 'function' ? options.setTimeout : setTimeout;
     const clearTimer = typeof options.clearTimeout === 'function' ? options.clearTimeout : clearTimeout;
     const onImpact = typeof options.onImpact === 'function' ? options.onImpact : () => {};
+    const onThrow = typeof options.onThrow === 'function' ? options.onThrow : () => {};
     const flightMs = Number.isFinite(options.flightMs) ? Math.max(0, options.flightMs) : DEFAULT_FLIGHT_MS;
     const impactMs = Number.isFinite(options.impactMs) ? Math.max(0, options.impactMs) : DEFAULT_IMPACT_MS;
     const activeFlights = [];
@@ -223,6 +224,7 @@
       const action = normaliseAction(message);
       if (!action || seenActions.has(action.actionId)) return false;
       seenActions.add(action.actionId);
+      try { onThrow(action); } catch (_) { /* cosmetic audio must never block the flight */ }
       const reducedMotion = prefersReducedMotion();
       const flight = { action, status:'flying', visual:null, projectile:null, source:null, target:null, timer:null, onAnimationEnd:null, didHit:false, reducedMotion,
         flightMs:reducedMotion ? 0 : flightMs, impactMs:reducedMotion ? Math.min(impactMs,REDUCED_IMPACT_MS) : impactMs };

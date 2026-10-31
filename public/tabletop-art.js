@@ -214,12 +214,15 @@
     2: 'M54 60C54 42 84 41 86 57C88 69 65 80 54 96H87',
     3: 'M54 51C67 41 85 47 85 60C85 69 75 73 65 73M65 73C88 69 93 96 72 98C62 100 55 95 52 92',
     4: 'M79 98V47L51 82H91',
-    5: 'M85 48H57L55 72C64 65 86 69 87 82C90 101 65 104 53 93'
+    5: 'M85 48H57L55 72C64 65 86 69 87 82C90 101 65 104 53 93',
+    6: 'M84 49C69 42 56 50 52 66C48 84 56 99 70 99C84 99 91 86 85 76C79 66 62 65 55 76C50 84 54 92 61 94',
+    7: 'M52 48H88L66 99',
+    8: 'M70 49C57 49 51 60 57 68C61 73 67 72 70 73C73 72 79 73 83 68C89 60 83 49 70 49ZM70 73C57 73 51 84 57 92C63 100 77 100 83 92C89 84 83 73 70 73Z'
   });
 
   function coinImage(number) {
-    if (!Number.isInteger(number) || number < 1 || number > 5) {
-      throw new RangeError('Coin number must be an integer from 1 to 5');
+    if (!Number.isInteger(number) || number < 1 || number > 8) {
+      throw new RangeError('Coin number must be an integer from 1 to 8');
     }
     if (coinCache.has(number)) return coinCache.get(number);
     const ridges = Array.from({ length: 48 }, (_, index) =>
