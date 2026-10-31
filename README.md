@@ -51,7 +51,7 @@ npm start
 
 每条最多 200 个 Unicode 码点，服务器保留当前房间最近 100 条；下一局继续保留，后加入者可见。房间结束或服务器重启后不再保留聊天记录。发送失败保留草稿，支持重试。
 
-表情包暂无素材，面板显示“暂无表情包”。以后将素材加入 `public/stickers/` 并更新 `catalog.json`，选择表情包会直接发送独立消息，不写入文字框。参见该目录的 README。
+当前已接入 16 个表情包，分为“默认”和“八木唯”两栏：默认 8 个，八木唯系列 8 个。素材加入 `public/stickers/` 并更新 `catalog.json` 后，点击表情包会直接发送独立消息，不写入文字框。参见该目录的 README。
 
 ## 文件结构
 
@@ -60,7 +60,7 @@ npm start
 | `public/index.html` | 当前 Vue 主菜单与牌桌模板 |
 | `public/game-client.js` | 联机快照、操作、偏好、发牌及结算演出 |
 | `public/room-chat.js`、`public/room-chat.css` | 房间聊天、emoji 输入、未读消息及聊天栏 |
-| `public/stickers/catalog.json` | 表情包清单，当前为空 |
+| `public/stickers/catalog.json` | 表情包清单，当前 16 项 |
 | `public/game.css`、`public/seat-layout.css` | 当前界面样式与 6～8 人紧凑座位布局 |
 | `public/tabletop-art.js` | 无外部依赖的 SVG 牌面、牌背、硬币；兼容浏览器与 CommonJS |
 | `public/tomato-interactions.js`、`public/tomato-sound.js` | 番茄飞行、爆开视觉和音效播放 |

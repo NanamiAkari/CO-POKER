@@ -386,6 +386,25 @@ test('sticker catalog allows only local assets and sticker sends leave text draf
   assert.equal(chat.sendSticker('outside'), false);
 });
 
+test('sticker catalog groups themes with the default tab first and switches the visible grid', () => {
+  const { chat } = fixture({ catalog: [
+    { id: 'a', label: '八木唯 1', src: '/stickers/a.webp', theme: 'bamuwei', themeLabel: '八木唯' },
+    { id: 'b', label: '默认 1', src: '/stickers/b.webp' },
+    { id: 'c', label: '八木唯 2', src: '/stickers/c.webp', theme: 'bamuwei', themeLabel: '八木唯' }
+  ] });
+  assert.deepEqual(chat.stickerThemes.value.map(theme => [theme.id, theme.label]), [['default', '默认'], ['bamuwei', '八木唯']]);
+  assert.deepEqual(chat.visibleChatStickers.value.map(item => item.id), ['b']);
+  assert.equal(chat.activeStickerTheme.value, 'default');
+  assert.equal(chat.activeStickerThemeData.value.label, '默认');
+  chat.selectStickerTheme('bamuwei');
+  assert.deepEqual(chat.visibleChatStickers.value.map(item => item.id), ['a', 'c']);
+  assert.equal(chat.activeStickerThemeData.value.label, '八木唯');
+  chat.selectStickerTheme('missing');
+  assert.equal(chat.activeStickerTheme.value, 'bamuwei', 'unknown tabs cannot replace the active tab');
+  chat.toggleChatPanel('stickers');
+  assert.equal(chat.activeStickerTheme.value, 'default', 'opening the sticker panel returns to the default tab');
+});
+
 test('empty and unavailable sticker manifests leave text chat usable', async () => {
   const { chat, sent, ack } = fixture({ fetch: async () => ({ ok: true, json: async () => [] }) });
   await chat.loadChatStickers();

@@ -24,7 +24,12 @@
       if (typeof item.label !== 'string' || !item.label.trim() || Array.from(item.label.trim()).length > 30) return false;
       ids.add(item.id);
       return true;
-    }).slice(0, 60).map(({ id, label, src }) => ({ id, label: label.trim(), src }));
+    }).slice(0, 60).map(item => {
+      const theme = typeof item.theme === 'string' && /^[a-zA-Z0-9_-]{1,32}$/.test(item.theme) ? item.theme : 'default';
+      let themeLabel = typeof item.themeLabel === 'string' ? item.themeLabel.trim() : '';
+      if (!themeLabel || Array.from(themeLabel).length > 30) themeLabel = theme === 'default' ? '默认' : theme;
+      return { id: item.id, label: item.label.trim(), src: item.src, theme, themeLabel };
+    });
   }
 
   function create(options) {
@@ -33,6 +38,20 @@
     const chatOpen = ref(false), chatDraft = ref(''), chatMessages = ref([]), chatUnread = ref(0);
     const chatPanel = ref(null), chatError = ref(''), chatSending = ref(false);
     const chatInput = ref(null), chatLog = ref(null), chatStickers = ref(cleanCatalog(options.catalog));
+    const activeStickerTheme = ref('default');
+    const stickerThemes = computed(() => {
+      const groups = new Map();
+      for (const item of chatStickers.value) {
+        if (!groups.has(item.theme)) groups.set(item.theme, { id: item.theme, label: item.themeLabel, items: [] });
+        groups.get(item.theme).items.push(item);
+      }
+      const result = [...groups.values()];
+      // Keep the general/default set first, then themes in catalog order.
+      result.sort((a, b) => a.id === 'default' ? -1 : b.id === 'default' ? 1 : 0);
+      return result;
+    });
+    const activeStickerThemeData = computed(() => stickerThemes.value.find(theme => theme.id === activeStickerTheme.value) || stickerThemes.value[0] || null);
+    const visibleChatStickers = computed(() => activeStickerThemeData.value?.items || []);
     const chatBubbles = ref(new Map());
     const bubbleTimers = new Map();
     const scheduleBubble = options.setTimeout || setTimeout, cancelBubble = options.clearTimeout || clearTimeout;
@@ -125,6 +144,7 @@
 
     function toggleChatPanel(panel) {
       rememberSelection();
+      if (panel === 'stickers') activeStickerTheme.value = 'default';
       chatPanel.value = chatPanel.value === panel ? null : ['emoji', 'stickers'].includes(panel) ? panel : null;
     }
 
@@ -247,7 +267,16 @@
       return false;
     }
 
-    function setChatStickers(catalog) { chatStickers.value = cleanCatalog(catalog); }
+    function setChatStickers(catalog) {
+      chatStickers.value = cleanCatalog(catalog);
+      if (!stickerThemes.value.some(theme => theme.id === activeStickerTheme.value)) {
+        activeStickerTheme.value = stickerThemes.value[0]?.id || 'default';
+      }
+    }
+
+    function selectStickerTheme(id) {
+      if (stickerThemes.value.some(theme => theme.id === id)) activeStickerTheme.value = id;
+    }
 
     async function loadChatStickers() {
       try {
@@ -272,6 +301,7 @@
       chatMessages.value = [];
       chatUnread.value = 0;
       chatPanel.value = null;
+      activeStickerTheme.value = 'default';
       chatError.value = '';
     }
 
@@ -279,7 +309,7 @@
       chatOpen, chatDraft, chatMessages, chatUnread, chatPanel, chatError, chatSending, chatInput, chatLog,
       chatPreview, chatPreviewText,
       chatBubbles, chatBubbleFor, chatSpectatorBubble,
-      chatEmojis: EMOJIS, chatStickers, chatMaxLength: MAX_LENGTH, chatDraftLength, chatCanSend,
+      chatEmojis: EMOJIS, chatStickers, stickerThemes, activeStickerTheme, activeStickerThemeData, visibleChatStickers, selectStickerTheme, chatMaxLength: MAX_LENGTH, chatDraftLength, chatCanSend,
       toggleChat, closeChat, toggleChatPanel, insertEmoji, sendChat, sendSticker, chatKeydown, chatCompositionStart, chatCompositionEnd,
       handleChatMessage, resetChat, loadChatStickers, setChatStickers,
       chatSticker: id => chatStickers.value.find(item => item.id === id) || null

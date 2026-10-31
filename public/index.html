@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
-  <link rel="stylesheet" href="/room-chat.css?v=20261005-table-chat">
+  <link rel="stylesheet" href="/room-chat.css?v=20261031-sticker-tabs-below-popup">
   <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-table-chat">
   <link rel="stylesheet" href="/tomato-interactions.css?v=20261011-tomato">
   <link rel="stylesheet" href="/seat-actions.css?v=20261011-seat-actions">
@@ -160,7 +160,19 @@
           </div>
           <form class="chat-composer" @submit.prevent="sendChat">
             <div v-if="chatPanel==='emoji'" class="chat-picker emoji-picker" aria-label="选择 emoji"><div class="emoji-grid"><button v-for="item in chatEmojis" :key="item.emoji" type="button" class="emoji-choice" :aria-label="item.label+' '+item.emoji" @mousedown.prevent @click="insertEmoji(item.emoji)">{{item.emoji}}</button></div></div>
-            <div v-else-if="chatPanel==='stickers'" class="chat-picker sticker-picker" aria-label="选择表情包"><div v-if="chatStickers.length" class="sticker-grid"><button v-for="item in chatStickers" :key="item.id" class="sticker-choice" type="button" :aria-label="'发送表情包：'+item.label" :disabled="!connected||chatSending" @click="sendSticker(item.id)"><img :src="item.src" :alt="item.label"></button></div><p v-else class="chat-empty">暂无表情包</p></div>
+            <div v-else-if="chatPanel==='stickers'" class="sticker-dock" aria-label="选择表情包">
+              <div class="chat-picker sticker-picker">
+                <div v-if="visibleChatStickers.length" class="sticker-scroll">
+                  <div :id="'sticker-panel-'+activeStickerTheme" class="sticker-grid" role="tabpanel" :aria-labelledby="'sticker-tab-'+activeStickerTheme">
+                    <button v-for="item in visibleChatStickers" :key="item.id" class="sticker-choice" type="button" :aria-label="'发送表情包：'+item.label" :disabled="!connected||chatSending" @click="sendSticker(item.id)"><img :src="item.src" :alt="item.label"></button>
+                  </div>
+                </div>
+                <p v-else class="chat-empty">{{stickerThemes.length?'这一栏暂无表情包':'暂无表情包'}}</p>
+              </div>
+              <div v-if="stickerThemes.length" class="sticker-tabs" role="tablist" aria-label="表情包分类">
+                <button v-for="theme in stickerThemes" :key="theme.id" :id="'sticker-tab-'+theme.id" class="sticker-tab" :class="{active:activeStickerTheme===theme.id}" type="button" role="tab" :aria-selected="activeStickerTheme===theme.id" :aria-controls="'sticker-panel-'+theme.id" @click="selectStickerTheme(theme.id)">{{theme.label}}</button>
+              </div>
+            </div>
             <textarea ref="chatInput" v-model="chatDraft" rows="2" maxlength="400" aria-label="聊天内容" placeholder="说点什么…" @keydown="chatKeydown" @compositionstart="chatCompositionStart" @compositionend="chatCompositionEnd"></textarea>
             <div class="chat-tools"><button class="chat-tool" type="button" :aria-expanded="chatPanel==='emoji'" aria-label="选择 emoji" @mousedown.prevent @click="toggleChatPanel('emoji')">☺</button><button class="chat-tool" type="button" :aria-expanded="chatPanel==='stickers'" aria-label="选择表情包" @click="toggleChatPanel('stickers')">▧</button><span class="chat-count" :class="{invalid:chatDraftLength>chatMaxLength}">{{chatDraftLength}}/{{chatMaxLength}}</span><button class="chat-send" type="submit" :disabled="!chatCanSend">{{chatSending?'发送中':'发送'}}</button></div>
             <p v-if="chatError" class="chat-error" role="alert">{{chatError}}</p><p v-else-if="!connected" class="chat-error">连接已断开，草稿已保留</p>
@@ -242,7 +254,7 @@
 <script src="/tabletop-art.js?v=20261031-eight-coins"></script>
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
-<script src="/room-chat.js?v=20261005-table-chat"></script>
+<script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
 <script src="/game-client.js?v=20261031-landlord-combo"></script>
