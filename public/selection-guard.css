@@ -1,0 +1,17 @@
+/* Rapid table clicks must not select seat names, labels, cards or coins.
+   Chat remains selectable so players can copy messages, and the composer
+   keeps normal text editing behaviour. */
+.game-canvas,
+.game-canvas * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.game-canvas textarea,
+.game-canvas input,
+.game-canvas [contenteditable="true"],
+.game-canvas .chat-log,
+.game-canvas .chat-log * {
+  -webkit-user-select: text;
+  user-select: text;
+}

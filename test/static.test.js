@@ -9,12 +9,21 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
     const html = await fetch(`http://127.0.0.1:${address.port}/?v=1`);
     assert.equal(html.status, 200);
     assert.match(html.headers.get('cache-control'), /no-cache/);
-    assert.match(await html.text(), /seat-layout\.css/);
+    const homeHtml = await html.text();
+    assert.match(homeHtml, /seat-layout\.css/);
+    assert.match(homeHtml, /selection-guard\.css/);
 
-    const seats = await fetch(`http://127.0.0.1:${address.port}/seat-layout.css?v=1`);
-    assert.equal(seats.status, 200);
-    assert.match(seats.headers.get('content-type'), /^text\/css/);
-    assert.match(seats.headers.get('cache-control'), /no-cache/);
+    for (const cssFile of ['seat-layout.css', 'selection-guard.css']) {
+      const css = await fetch(`http://127.0.0.1:${address.port}/${cssFile}?v=1`);
+      assert.equal(css.status, 200);
+      assert.match(css.headers.get('content-type'), /^text\/css/);
+      assert.match(css.headers.get('cache-control'), /no-cache/);
+      if (cssFile === 'selection-guard.css') {
+        const rules = await css.text();
+        assert.match(rules, /\.game-canvas[\s\S]*user-select:\s*none/);
+        assert.match(rules, /\.chat-log[\s\S]*user-select:\s*text/);
+      }
+    }
 
     const coin = await fetch(`http://127.0.0.1:${address.port}/assets/coin-1.svg?v=1`);
     assert.equal(coin.status, 200);
