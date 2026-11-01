@@ -41,7 +41,9 @@
     // seated the row switches to a compact seat treatment so every seat keeps
     // its own coin and tomato action anchor inside the fixed 1200x760 canvas.
     const maxPlayers=computed(()=>state.maxPlayers||8);
-    const emptySeatCount=computed(()=>state.phase==='WAITING'?Math.max(0,maxPlayers.value-1-opponents.value.length):0);
+    // The lobby grows with the actual player count instead of reserving all
+    // eight seats. Keep one invite slot while there is still room.
+    const emptySeatCount=computed(()=>state.phase==='WAITING'?Math.min(1,Math.max(0,maxPlayers.value-state.players.length)):0);
     const compactSeats=computed(()=>opponents.value.length+emptySeatCount.value>4);
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));

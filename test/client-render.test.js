@@ -329,16 +329,32 @@ test('eight-player table renders seven compact seats, eight coins and every acti
   assert.equal((table.match(/data-player=/g)||[]).length,8,'seven opponents plus self keep player anchors');
 });
 
-test('waiting room reports eight seats and fills the remaining places', async () => {
-  const waiting=await renderScreen(v=>{
-    v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';
-    Object.assign(v.state,{phase:'WAITING',maxPlayers:8,players:[{id:'A',currentCoin:null}]});
-    assert.equal(v.emptySeatCount.value,7);
-    assert.equal(v.compactSeats.value,true);
-    assert.equal(v.maxPlayers.value,8);
+test('waiting room grows with the actual player count and keeps one invite slot', async () => {
+  for (const count of [1,2,5,8]) {
+    const players=Array.from({length:count},(_,index)=>({id:String.fromCharCode(65+index),currentCoin:null}));
+    const waiting=await renderScreen(v=>{
+      v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';
+      Object.assign(v.state,{phase:'WAITING',maxPlayers:8,players});
+      assert.equal(v.emptySeatCount.value,count<8?1:0);
+      assert.equal(v.compactSeats.value,count>=5);
+      assert.equal(v.maxPlayers.value,8);
+    });
+    assert.match(waiting,new RegExp(`${count} \/ 8 已入座`));
+    assert.equal((waiting.match(/class="seat empty-seat"/g)||[]).length,count<8?1:0);
+    assert.equal((waiting.match(/class="opponents compact"/g)||[]).length,count>=5?1:0);
+  }
+});
+
+test('a two-player game keeps a single normal-width opponent seat', async () => {
+  const table=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';v.role.value='PLAYER';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'ROUND_1_COINS',maxPlayers:8,players:[{id:'A',currentCoin:null},{id:'B',currentCoin:null}]});
+    assert.equal(v.emptySeatCount.value,0);
+    assert.equal(v.compactSeats.value,false);
   });
-  assert.match(waiting,/1 \/ 8 已入座/);
-  assert.equal((waiting.match(/class="seat empty-seat"/g)||[]).length,7);
+  assert.doesNotMatch(table,/class="opponents compact"/);
+  assert.equal((table.match(/class="seat empty-seat"/g)||[]).length,0);
+  assert.equal((table.match(/data-player="B"/g)||[]).length,1);
 });
 
 test('spectators see every player\'s hole cards during live play while players keep them face-down', async () => {
