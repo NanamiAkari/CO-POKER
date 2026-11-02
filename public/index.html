@@ -14,8 +14,8 @@
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
-  <link rel="stylesheet" href="/room-chat.css?v=20261031-sticker-tabs-below-popup">
-  <link rel="stylesheet" href="/chat-bubbles.css?v=20261005-table-chat">
+  <link rel="stylesheet" href="/room-chat.css?v=20261102-big-stickers">
+  <link rel="stylesheet" href="/chat-bubbles.css?v=20261102-big-stickers">
   <link rel="stylesheet" href="/tomato-interactions.css?v=20261011-tomato">
   <link rel="stylesheet" href="/seat-actions.css?v=20261011-seat-actions">
 </head>
@@ -151,7 +151,7 @@
           <header class="chat-heading"><span>房间聊天</span><button class="chat-close" @click="toggleChat" aria-label="收起房间聊天" aria-expanded="true" aria-controls="room-chat-panel">−</button></header>
           <div ref="chatLog" class="chat-log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0" aria-label="聊天消息">
             <p v-if="!chatMessages.length" class="chat-empty">和同桌聊聊吧</p>
-            <article v-for="item in chatMessages" :key="item.id" class="chat-message" :class="{own:item.playerId===playerId}">
+            <article v-for="item in chatMessages" :key="item.id" class="chat-message" :class="{own:item.playerId===playerId,sticker:item.kind==='sticker'}">
               <div class="chat-meta"><span>{{item.playerId}}</span><small v-if="item.role==='SPECTATOR'">观战</small></div>
               <p v-if="item.kind==='text'" class="chat-text">{{item.text}}</p>
               <img v-else-if="chatSticker(item.stickerId)" class="chat-sticker" :src="chatSticker(item.stickerId).src" :alt="chatSticker(item.stickerId).label">
@@ -257,6 +257,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261101-lobby-seats"></script>
+<script src="/game-client.js?v=20261102-big-stickers"></script>
 </body>
 </html>

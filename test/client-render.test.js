@@ -121,6 +121,18 @@ test('live chat bubbles follow the speaker in both player viewpoints and settlem
   assert.equal((result.match(/class="chat-bubble"/g)||[]).length,5,'settlement has no duplicate bubbles at hidden seats');
 });
 
+test('sticker messages and bubbles use the larger sticker layout class', async () => {
+  const output=await renderScreen(v=>{
+    v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';
+    v.setChatStickers([{id:'wide',label:'宽图',src:'/stickers/wide.jpg',theme:'default',themeLabel:'默认'}]);
+    v.chatOpen.value=true;
+    v.handleChatMessage({type:'CHAT_MESSAGE',roomId:'ABC123',message:{id:1,playerId:'A',role:'PLAYER',kind:'sticker',stickerId:'wide',timestamp:1}});
+  });
+  assert.match(output,/class="chat-message(?: own)? sticker"/);
+  assert.match(output,/class="chat-bubble sticker"/);
+  assert.match(output,/src="\/stickers\/wide.jpg"/);
+});
+
 test('bubble contents are plain text, history does not pop, and spectators retain attribution', async () => {
   const output=await renderScreen(v=>{
     v.inRoom.value=true;v.playerId.value='A';v.roomId.value='ABC123';v.state.players=[{id:'A'}];

@@ -145,6 +145,55 @@
   width: 200px;
 }
 
+/* Sticker bubbles are allowed to be larger than text bubbles and keep the
+   source image's aspect ratio instead of being forced into a square. */
+.chat-bubble.sticker {
+  width: fit-content;
+  max-width: min(220px, calc(100vw - 24px));
+  padding: 6px;
+}
+
+.chat-bubble.sticker .chat-bubble-sticker {
+  width: auto;
+  height: auto;
+  max-width: 112px;
+  max-height: 160px;
+  object-fit: contain;
+}
+
+.seat > .chat-bubble.sticker {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.self-hand > .chat-bubble.sticker {
+  top: auto;
+  bottom: calc(100% + 6px);
+  width: fit-content;
+}
+
+.self-hand > .chat-bubble.sticker::before {
+  top: auto;
+  bottom: -5px;
+  left: auto;
+  right: 18px;
+  border: 0;
+  border-right: 1px solid #dac997;
+  border-bottom: 1px solid #dac997;
+  background: #f4e9ca;
+}
+
+.spectator-bubble-anchor > .chat-bubble.sticker {
+  width: fit-content;
+}
+
+/* Settlement-order speech stays compact to avoid covering the result band. */
+.order-players li > .chat-bubble.sticker {
+  width: 184px;
+  max-width: calc(100% + 20px);
+  padding: 8px 12px;
+}
+
 .spectator-bubble-anchor > .chat-bubble::before {
   top: auto;
   bottom: -5px;
