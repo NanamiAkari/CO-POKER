@@ -509,9 +509,12 @@ test('game-over settlement sorts the series table and switches to lifetime total
     v.seriesTableMode.value = 'lifetime';
     Object.assign(v.state, fixture);
   });
-  assert.match(lifetime, /房间累计正确与错误统计/);
+  assert.match(lifetime, /class="cumulative-grid"/);
+  assert.match(lifetime, /房间累计/);
+  assert.match(lifetime, /共 9 局/);
   assert.doesNotMatch(lifetime, /第1局/);
-  const lifetimeOrder = [...lifetime.matchAll(/<td class="series-player" title="([^"]+)"/g)].map(match => match[1]);
+  assert.equal((lifetime.match(/class="cumulative-card/g) || []).length, 3);
+  const lifetimeOrder = [...lifetime.matchAll(/<strong title="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(lifetimeOrder, ['B', 'A', 'C']);
 });
 

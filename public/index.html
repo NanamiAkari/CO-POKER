@@ -133,24 +133,34 @@
           <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
             <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
             <div v-if="state.phase==='GAME_OVER'&&seriesHistory.length" class="summary-right series-board" aria-label="本场历史结算">
-              <div class="series-board-tabs" role="tablist" aria-label="战绩范围">
-                <button type="button" role="tab" :aria-selected="seriesTableMode==='series'" :class="{active:seriesTableMode==='series'}" @click="seriesTableMode='series'">本场</button>
-                <button type="button" role="tab" :aria-selected="seriesTableMode==='lifetime'" :class="{active:seriesTableMode==='lifetime'}" @click="seriesTableMode='lifetime'">累计</button>
+              <div class="series-board-head">
+                <span class="series-board-title">{{seriesTableMode==='series'?'本场战绩':'房间累计'}}<small v-if="seriesTableMode==='lifetime'">共 {{lifetimeRoundCount}} 局</small></span>
+                <div class="series-board-tabs" role="tablist" aria-label="战绩范围">
+                  <button type="button" role="tab" :aria-selected="seriesTableMode==='series'" :class="{active:seriesTableMode==='series'}" @click="seriesTableMode='series'">本场</button>
+                  <button type="button" role="tab" :aria-selected="seriesTableMode==='lifetime'" :class="{active:seriesTableMode==='lifetime'}" @click="seriesTableMode='lifetime'">累计</button>
+                </div>
               </div>
               <div class="series-board-scroll">
-                <table class="series-table" :class="{lifetime:seriesTableMode==='lifetime'}" :aria-label="seriesTableMode==='series'?'本场每局正确与错误统计':'房间累计正确与错误统计'">
-                  <thead v-if="seriesTableMode==='series'">
+                <table v-if="seriesTableMode==='series'" class="series-table" aria-label="本场每局正确与错误统计">
+                  <thead>
                     <tr><th scope="col">#</th><th scope="col">玩家</th><th v-for="round in seriesHistory" :key="round.round" scope="col">第{{round.round}}局<i class="series-round-result" :class="{failed:!round.success}" :title="round.success?'团队成功':'团队失败'">{{round.success?'✓':'×'}}</i></th><th scope="col">正确</th><th scope="col">错误</th></tr>
                   </thead>
-                  <thead v-else><tr><th scope="col">#</th><th scope="col">玩家</th><th scope="col">正确</th><th scope="col">错误</th></tr></thead>
                   <tbody>
-                    <tr v-for="(row,index) in seriesTableRows" :key="row.playerId" :class="{top:index===0}">
+                    <tr v-for="(row,index) in seriesRows" :key="row.playerId" :class="{top:index===0}">
                       <td>{{index+1}}</td><td class="series-player" :title="row.playerId">{{row.playerId}}</td>
-                      <template v-if="seriesTableMode==='series'"><td v-for="(ok,roundIndex) in row.results" :key="roundIndex"><span class="series-mark" :class="ok?'ok':'bad'" :aria-label="`第${roundIndex+1}局：${ok?'正确':'错误'}`">{{ok?'✓':'×'}}</span></td></template>
+                      <td v-for="(ok,roundIndex) in row.results" :key="roundIndex"><span class="series-mark" :class="ok?'ok':'bad'" :aria-label="`第${roundIndex+1}局：${ok?'正确':'错误'}`">{{ok?'✓':'×'}}</span></td>
                       <td>{{row.correct}}</td><td>{{row.wrong}}</td>
                     </tr>
                   </tbody>
                 </table>
+                <div v-else class="cumulative-grid" :class="{multi:lifetimeRows.length>3}">
+                  <article v-for="(row,index) in lifetimeRows" :key="row.playerId" class="cumulative-card" :class="'rank-'+(index+1)" :aria-label="`${row.playerId}，正确 ${row.correct} 次，错误 ${row.wrong} 次，正确率 ${row.rate}%`">
+                    <span class="cumulative-rank">{{index+1}}</span>
+                    <div class="cumulative-person"><strong :title="row.playerId">{{row.playerId}}</strong><div class="cumulative-progress" aria-hidden="true"><i :style="{width:row.rate+'%'}"></i></div></div>
+                    <span class="cumulative-count ok"><b>{{row.correct}}</b><small>正确</small></span>
+                    <span class="cumulative-count bad"><b>{{row.wrong}}</b><small>错误</small></span>
+                  </article>
+                </div>
               </div>
             </div>
             <div v-else class="summary-right"><div class="summary-tabs"><button v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :class="{active:summaryIndex===i}" :aria-label="`查看 ${entry.playerId} 的最大牌组`" @click="summaryIndex=i"><img :src="coinImage(entry.coin)" alt=""></button></div><div v-if="summaryEntry"><div class="summary-name">{{summaryEntry.playerId}}</div><div class="five-cards"><playing-card v-for="card in summaryEntry.hand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(summaryEntry.hand,card)"></playing-card></div><div class="hand-label">{{summaryEntry.hand.categoryName}}</div></div><p class="record-help">悬停或点击上方比较标记，查看详细结果</p></div>
