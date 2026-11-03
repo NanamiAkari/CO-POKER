@@ -502,16 +502,17 @@ test('five-player settlement retains the full order and completed verdicts, with
 });
 
 test('game-over settlement sorts the series table and switches to lifetime totals', async () => {
+  const scores = values => values.map(([playerId, correct, wrong]) => ({ playerId, correct, wrong }));
   const seriesHistory = [
-    { round: 1, success: true, correctPlayerIds: ['A', 'B', 'C'] },
-    { round: 2, success: true, correctPlayerIds: ['A', 'B', 'C'] },
-    { round: 3, success: false, correctPlayerIds: ['A'] },
-    { round: 4, success: true, correctPlayerIds: ['A', 'B', 'C'] },
-    { round: 5, success: false, correctPlayerIds: ['B'] }
+    { round: 1, success: true, playerScores: scores([['A', 2, 0], ['B', 2, 0], ['C', 2, 0]]) },
+    { round: 2, success: true, playerScores: scores([['A', 2, 0], ['B', 2, 0], ['C', 2, 0]]) },
+    { round: 3, success: false, playerScores: scores([['A', 1, 1], ['B', 0, 2], ['C', 0, 2]]) },
+    { round: 4, success: true, playerScores: scores([['A', 2, 0], ['B', 2, 0], ['C', 2, 0]]) },
+    { round: 5, success: false, playerScores: scores([['A', 2, 0], ['B', 1, 1], ['C', 0, 2]]) }
   ];
   const lifetimeStats = [
-    { playerId: 'A', correct: 7, wrong: 2 },
-    { playerId: 'B', correct: 8, wrong: 1 },
+    { playerId: 'A', correct: 9, wrong: 1 },
+    { playerId: 'B', correct: 10, wrong: 1 },
     { playerId: 'C', correct: 6, wrong: 3 }
   ];
   const fixture = {
@@ -522,14 +523,21 @@ test('game-over settlement sorts the series table and switches to lifetime total
   const output = await renderScreen(v => {
     v.inRoom.value = true; v.playerId.value = 'A'; v.presentation.value = 'summary';
     Object.assign(v.state, fixture);
-    assert.deepEqual([...v.seriesRows.value].map(row => [row.playerId, row.correct, row.wrong]), [['A', 4, 1], ['B', 4, 1], ['C', 3, 2]]);
+    assert.deepEqual([...v.seriesRows.value].map(row => [row.playerId, row.correct, row.wrong]), [['A', 9, 1], ['B', 7, 3], ['C', 6, 4]]);
     assert.deepEqual([...v.lifetimeRows.value].map(row => row.playerId), ['B', 'A', 'C']);
   });
   assert.match(output, /class="summary-right series-board"/);
   assert.match(output, /本场每局正确与错误统计/);
   assert.match(output, /第1局/);
   assert.match(output, /第5局/);
-  assert.equal((output.match(/class="series-mark/g) || []).length, 15);
+  assert.equal((output.match(/class="series-round-score/g) || []).length, 15);
+  assert.match(output, /series-round-score ok/);
+  assert.match(output, /series-round-score mixed/);
+  assert.match(output, /series-round-score bad/);
+  assert.match(output, /2✓/);
+  assert.match(output, /1✓/);
+  assert.match(output, /1×/);
+  assert.match(output, /2×/);
   const order = [...output.matchAll(/<td class="series-player"[^>]*>([^<]+)<\/td>/g)].map(match => match[1]);
   assert.deepEqual(order, ['A', 'B', 'C']);
   assert.equal((output.match(/class="series-player" tabindex="0"/g) || []).length, 3, 'truncated table names stay focusable');
@@ -629,12 +637,12 @@ test('comparison playback completes every pair after a failure, then unlocks the
   assert.equal(view.displayedFailureCount.value,1);
 });
 
-test('all-player comparison skip jumps to summary after selection playback', async () => {
-  let view, now = 0, id = 0;
-  const scheduled = new Map();
+test('all-player comparison skip jumps straight to summary without reveal timers', async () => {
+  let view;
+  let scheduled = 0;
   const timers = {
-    setTimeout(fn, ms) { const key = ++id; scheduled.set(key, {at: now + ms, fn}); return key; },
-    clearTimeout(key) { scheduled.delete(key); }
+    setTimeout() { scheduled += 1; return scheduled; },
+    clearTimeout() {}
   };
   await renderScreen(v => {
     view = v;
@@ -642,18 +650,10 @@ test('all-player comparison skip jumps to summary after selection playback', asy
     v.presentation.value = 'summary';
     Object.assign(v.state, {...fivePlayerResult(), comparisonSkip: true});
   }, timers);
-  const playback = view.replayReveal();
-  for (let guard = 0; guard < 100 && view.presentation.value !== 'summary'; guard++) {
-    const next = [...scheduled].sort((a, b) => a[1].at - b[1].at)[0];
-    assert.ok(next, 'selection playback must schedule its next step');
-    scheduled.delete(next[0]);
-    now = next[1].at;
-    next[1].fn();
-    for (let n = 0; n < 5; n++) await Promise.resolve();
-  }
-  await playback;
+  await view.replayReveal();
   assert.equal(view.presentation.value, 'summary');
   assert.equal(view.completedComparisonCount.value, view.state.result.comparisons.length);
+  assert.equal(scheduled, 0, 'a unanimous skip must not start the reveal sequence');
 });
 
 test('two to eight players show one icon-only review marker between each adjacent pair', async () => {

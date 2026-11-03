@@ -59,7 +59,7 @@ class BotDriver {
     random = Math.random,
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
-    coinDelayMs = 950,
+    coinDelayMs = 700,
     rematchDelayMs = 450,
     skipDelayMs = 300
   }) {
@@ -93,10 +93,14 @@ class BotDriver {
     const bots = game.players.filter(player => player.isBot);
 
     if (COIN_PHASES.has(game.phase)) {
-      for (const bot of bots) {
-        if (bot.currentCoin !== null || !game.coinTable?.area.size) continue;
-        const phase = game.phase;
-        this.schedule(`coin:${bot.id}:${phase}`, this.coinDelayMs, () => {
+      // Bots take coins one at a time in seat order. Only one coin timer may be
+      // pending per phase, so a table full of bots cannot empty the public area
+      // in a single synchronous burst.
+      const phase = game.phase;
+      const key = `coin:${phase}`;
+      const bot = bots.find(player => player.currentCoin === null);
+      if (bot && game.coinTable?.area.size && !this.timers.has(key)) {
+        this.schedule(key, this.coinDelayMs, () => {
           if (this.room.game !== game || game.phase !== phase || bot.currentCoin !== null || !game.coinTable?.area.size) return;
           const coin = chooseBotCoin(game, bot, this.random);
           if (!Number.isInteger(coin)) return;

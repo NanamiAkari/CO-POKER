@@ -35,6 +35,37 @@ test('bots choose a free coin from their own hand strength', () => {
   assert.equal(chooseBotCoin(weak.game, weak.bot, () => 0), null);
 });
 
+test('bot coin actions are serialized one bot at a time in seat order', () => {
+  const game = new GameRoom({ players: ['human', 'Robot Jack', 'Robot Sam'], botIds: ['Robot Jack', 'Robot Sam'], random: () => 0 });
+  const room = { game, hostId: 'human' };
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['human', 'Robot Jack', 'Robot Sam']);
+  game.communityCards = [];
+  const jack = game.players.find(player => player.id === 'Robot Jack');
+  const sam = game.players.find(player => player.id === 'Robot Sam');
+  const timers = [];
+  let driver;
+  driver = new BotDriver({
+    room,
+    onChange: () => { driver.sync(); },
+    random: () => 0,
+    setTimeoutFn: callback => { timers.push(callback); return timers.length; },
+    clearTimeoutFn: () => {},
+    coinDelayMs: 0
+  });
+
+  driver.sync();
+  assert.equal(timers.length, 1, 'only one bot may be waiting to take a coin');
+  timers.shift()();
+  assert.notEqual(jack.currentCoin, null);
+  assert.equal(sam.currentCoin, null, 'the second bot waits for the first action to finish');
+  assert.equal(timers.length, 1);
+  timers.shift()();
+  assert.notEqual(sam.currentCoin, null);
+  assert.equal(timers.length, 0);
+  driver.stop();
+});
+
 test('bot driver takes a coin, confirms after the host, and joins a skip vote', () => {
   const { game, bot } = botRoom();
   const room = { game, hostId: 'human' };

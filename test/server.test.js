@@ -197,7 +197,8 @@ test('four rounds, immutable settlement, rematch votes, and END_GAME close the f
   assert.equal(result.state.result.comparisons.length, 1);
   assert.equal(result.state.seriesHistory.length, 1);
   assert.equal(result.state.seriesHistory[0].round, 1);
-  assert.equal(result.state.lifetimeStats.reduce((total, item) => total + item.correct + item.wrong, 0), result.state.players.length);
+  assert.equal(result.state.lifetimeStats.reduce((total, item) => total + item.correct + item.wrong, 0), result.state.players.length * 2);
+  assert.ok(result.state.lifetimeStats.every(item => item.correct + item.wrong === 2));
   assert.match((await r.host.request({type:'RETURN_COIN',coin:1,roomId:r.roomId}, 'ERROR')).message, /closed/);
   const vote = await r.host.request({type:'REMATCH',roomId:r.roomId}, 'ROOM_STATE'); await r.guest.next('ROOM_STATE');
   assert.deepEqual(vote.state.rematchConfirmed, ['a']); assert.equal(vote.state.phase, 'SETTLEMENT');

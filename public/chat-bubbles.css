@@ -129,8 +129,6 @@
   line-height: 17px;
 }
 
-.order-players li > .chat-bubble .chat-bubble-sticker { width: 17px; height: 17px; }
-
 .spectator-bubble-anchor {
   position: absolute;
   right: 32px;
@@ -187,11 +185,13 @@
   width: fit-content;
 }
 
-/* Settlement-order speech stays compact to avoid covering the result band. */
+/* Settlement-order stickers match in-game sticker bubbles: natural aspect
+   ratio, the same 112×160 ceiling and a fit-content shell. They may overlap
+   the result panel while visible, just like seat stickers overlap the table. */
 .order-players li > .chat-bubble.sticker {
-  width: 184px;
-  max-width: calc(100% + 20px);
-  padding: 8px 12px;
+  width: fit-content;
+  max-width: 220px;
+  padding: 6px;
 }
 
 .spectator-bubble-anchor > .chat-bubble::before {

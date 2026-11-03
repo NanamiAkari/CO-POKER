@@ -130,7 +130,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     // Keeping it out of other clients also keeps the wire state free of any
     // human/bot distinction for everyone else at the table.
     bots: viewer && viewer.id === room.hostId ? room.bots.slice() : [],
-    seriesHistory: room.game ? room.game.seriesHistory.map(entry => ({ round: entry.round, success: entry.success, correctPlayerIds: entry.correctPlayerIds.slice() })) : [],
+    seriesHistory: room.game ? room.game.seriesHistory.map(entry => ({ round: entry.round, success: entry.success, playerScores: entry.playerScores.map(score => ({ ...score })) })) : [],
     lifetimeStats: room.game ? room.game.players.map(player => {
       const stats = room.game.lifetimeStats.get(player.id) || { correct: 0, wrong: 0 };
       return { playerId: player.id, correct: stats.correct, wrong: stats.wrong };

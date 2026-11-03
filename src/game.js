@@ -166,14 +166,24 @@ class GameRoom {
     this.record('FINAL_HANDS_CALCULATED');
   }
 
-  playerOrderCorrect(player) {
-    return this.players.every(other => {
-      if (other === player) return true;
-      const handComparison = compareHands(player.finalHand, other.finalHand);
-      if (handComparison === 0) return true;
-      const coinComparison = Math.sign(other.currentCoin - player.currentCoin);
-      return coinComparison === Math.sign(handComparison);
+  comparisonPlayerScores(ordered, comparisons) {
+    // Each player owns a left and a right comparison slot. A middle player
+    // gets one result from each neighbour; an edge player has only one
+    // neighbour, so that single comparison fills both slots. Every player
+    // therefore contributes exactly two comparison credits per round.
+    const scores = new Map(this.players.map(player => [player.id, { playerId: player.id, correct: 0, wrong: 0 }]));
+    ordered.forEach((player, index) => {
+      const adjacent = [];
+      if (index > 0) adjacent.push(comparisons[index - 1]);
+      if (index < ordered.length - 1) adjacent.push(comparisons[index]);
+      if (adjacent.length === 1) adjacent.push(adjacent[0]);
+      const score = scores.get(player.id);
+      for (const comparison of adjacent) {
+        if (comparison.passed) score.correct += 1;
+        else score.wrong += 1;
+      }
     });
+    return [...scores.values()];
   }
 
   settle() {
@@ -193,14 +203,14 @@ class GameRoom {
     }
     if (success) this.successCount += 1;
     else this.failureCount += 1;
-    const correctPlayerIds = this.players.filter(player => this.playerOrderCorrect(player)).map(player => player.id);
-    for (const player of this.players) {
-      const stats = this.lifetimeStats.get(player.id) || { correct: 0, wrong: 0 };
-      if (correctPlayerIds.includes(player.id)) stats.correct += 1;
-      else stats.wrong += 1;
-      this.lifetimeStats.set(player.id, stats);
+    const playerScores = this.comparisonPlayerScores(ordered, comparisons);
+    for (const score of playerScores) {
+      const stats = this.lifetimeStats.get(score.playerId) || { correct: 0, wrong: 0 };
+      stats.correct += score.correct;
+      stats.wrong += score.wrong;
+      this.lifetimeStats.set(score.playerId, stats);
     }
-    this.seriesHistory.push({ round: this.seriesHistory.length + 1, success, correctPlayerIds });
+    this.seriesHistory.push({ round: this.seriesHistory.length + 1, success, playerScores });
     this.lastResult = { success, comparisons };
     this.phase = (this.successCount >= 3 || this.failureCount >= 3) ? PHASES.GAME_OVER : PHASES.SETTLEMENT;
     this.record('GAME_SETTLED', this.lastResult);

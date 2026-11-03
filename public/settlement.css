@@ -153,17 +153,20 @@
   font-style: normal;
 }
 .series-round-result.failed { color: #e8a48f; }
-.series-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  font-size: 11px;
-  line-height: 1;
+.series-round-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.series-mark.ok { color: #b5e7c7; background: #2c614a; }
-.series-mark.bad { color: #f3b8a7; background: #6b3930; }
+.series-round-score.ok { color: #b5e7c7; background: #2c614a66; }
+.series-round-score.bad { color: #f3b8a7; background: #6b393066; }
+.series-round-score.mixed { color: #e4cf9f; background: #b6944524; }
 
 /* Cumulative view: a small in-game honor podium, not a statistics table. */
 .cumulative-honor {

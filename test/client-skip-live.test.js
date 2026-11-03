@@ -105,7 +105,7 @@ test('live four-player skip votes show 0→1→2→3→4 during playback and ski
   assert.deepEqual(c.errors,[]);
 });
 
-test('unanimous votes during hand selection preserve all selection timings and cannot leak into the next round', async () => {
+test('unanimous votes during hand selection jump straight to the summary and cannot leak into the next round', async () => {
   const c=await client(), round=settlement(), selected=[];
   const stop=Vue.watch(()=>[c.view.presentation.value,c.view.revealIndex.value],([stage,index])=>{
     if(stage==='select'&&!selected.includes(index))selected.push(index);
@@ -114,15 +114,16 @@ test('unanimous votes during hand selection preserve all selection timings and c
   assert.equal(c.view.presentation.value,'select');assert.equal(c.view.selectionLit.value,true);
   assert.equal(c.view.showSkipComparison.value,true);
   c.view.requestComparisonSkip();
+  const at=c.now();
   const voted={...round,comparisonSkip:true,comparisonSkipVotes:['A','B','C','D']};
   c.receive(voted);await flush();
   assert.equal(c.view.pending.value,false);assert.equal(c.view.state.comparisonSkipVotes.length,4);
-  await c.advance(2199);assert.equal(c.view.presentation.value,'select','full votes must not shorten hand selection');
-  await c.advance(1);assert.equal(c.view.presentation.value,'gap');
-  await c.until(()=>c.view.presentation.value==='summary');
-  assert.deepEqual(selected,[0,1,2,3]);
-  assert.equal(c.now(),650+4*(3000+500),'every selection and its spacing plays for its complete duration');
-  assert.equal(c.view.completedComparisonCount.value,3);stop();
+  assert.equal(c.now(),at,'unanimous skip must not schedule another selection timer');
+  assert.equal(c.view.presentation.value,'summary');
+  assert.equal(c.view.completedComparisonCount.value,3);
+  assert.equal(c.view.busy.value,false);
+  assert.deepEqual(selected,[0],'the remaining hand-selection sequence is abandoned');
+  stop();
 
   const next={...round,phase:'ROUND_1_COINS',result:null,finalHands:[],comparisonSkip:false,comparisonSkipVotes:[],communityCards:[],players:round.players.map(p=>({...p,currentCoin:null}))};
   c.receive(next);await flush();await c.advance(1600);

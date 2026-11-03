@@ -65,9 +65,17 @@
     const seriesRows=computed(()=>{
       const history=seriesHistory.value;
       return state.players.map((player,index)=>{
-        const results=history.map(round=>Array.isArray(round.correctPlayerIds)&&round.correctPlayerIds.includes(player.id));
-        const correct=results.filter(Boolean).length;
-        return {playerId:player.id,results,correct,wrong:history.length-correct,index};
+        // New snapshots carry two comparison credits per player per round.
+        // The correctPlayerIds fallback keeps older in-memory rooms readable.
+        const rounds=history.map(round=>{
+          const score=Array.isArray(round.playerScores)?round.playerScores.find(item=>item.playerId===player.id):null;
+          if(score)return {correct:Number(score.correct)||0,wrong:Number(score.wrong)||0};
+          const ok=Array.isArray(round.correctPlayerIds)&&round.correctPlayerIds.includes(player.id);
+          return {correct:ok?1:0,wrong:ok?0:1};
+        });
+        const correct=rounds.reduce((sum,round)=>sum+round.correct,0);
+        const wrong=rounds.reduce((sum,round)=>sum+round.wrong,0);
+        return {playerId:player.id,rounds,correct,wrong,index};
       }).sort((a,b)=>b.correct-a.correct||a.wrong-b.wrong||a.index-b.index);
     });
     const lifetimeRows=computed(()=>{
@@ -217,8 +225,8 @@
       state.comparisonSkipVotes=[...liveSkipState.votes];
       state.comparisonSkip=liveSkipState.completed;
       if(pendingCommand==='SKIP_COMPARISON'&&state.comparisonSkipVotes.includes(playerId.value))unlock();
-      // Only comparison waits are interruptible. A slower client must still
-      // finish every player's hand-selection sequence after unanimous votes.
+      // Every reveal wait is interruptible: unanimous skip jumps straight to
+      // the result instead of finishing the hand-selection sequence.
       if(state.comparisonSkip)for(const finish of [...comparisonWaiters])finish();
     }
     function receiveSkipState(snapshot){
@@ -410,13 +418,23 @@
       } else presentation.value='idle';
       if(live(epoch))busy.value=false;
     }
+    function finishReveal(){
+      completedComparisonCount.value=state.result?.comparisons.length || 0;
+      if(state.phase==='GAME_OVER')seriesTableMode.value='series';
+      presentation.value='summary';tone(state.result?.success?'win':'card');
+    }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
-      presentation.value='hold';await sleep(650);if(!live(epoch))return;
+      if(state.comparisonSkip){finishReveal();return;}
+      presentation.value='hold';await waitForComparison(650);if(!live(epoch))return;
+      if(state.comparisonSkip){finishReveal();return;}
       for(let i=0;i<sortedFinalHands.value.length;i++){
-        revealIndex.value=i;selectionLit.value=false;presentation.value='select';tone('card');await sleep(800);if(!live(epoch))return;
-        selectionLit.value=true;await sleep(timings().select-800);if(!live(epoch))return;
-        presentation.value='gap';await sleep(500);if(!live(epoch))return;
+        revealIndex.value=i;selectionLit.value=false;presentation.value='select';tone('card');await waitForComparison(800);if(!live(epoch))return;
+        if(state.comparisonSkip){finishReveal();return;}
+        selectionLit.value=true;await waitForComparison(timings().select-800);if(!live(epoch))return;
+        if(state.comparisonSkip){finishReveal();return;}
+        presentation.value='gap';await waitForComparison(500);if(!live(epoch))return;
+        if(state.comparisonSkip){finishReveal();return;}
       }
       for(let i=0;i<(state.result?.comparisons.length || 0);i++){
         if(state.comparisonSkip)break;
@@ -427,9 +445,8 @@
         completedComparisonCount.value=i+1;
         presentation.value='gap';await waitForComparison(timings().gap);if(!live(epoch))return;
       }
-      completedComparisonCount.value=state.result?.comparisons.length || 0;
-      if(state.phase==='GAME_OVER')seriesTableMode.value='series';
-      presentation.value='summary';tone(state.result?.success?'win':'card');
+      if(state.comparisonSkip){finishReveal();return;}
+      finishReveal();
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});

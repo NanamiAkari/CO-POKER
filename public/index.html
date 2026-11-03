@@ -10,12 +10,12 @@
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
-  <link rel="stylesheet" href="/settlement.css?v=20261103-honor-name-tip">
+  <link rel="stylesheet" href="/settlement.css?v=20261103-comparison-credits">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
   <link rel="stylesheet" href="/room-chat.css?v=20261102-big-stickers">
-  <link rel="stylesheet" href="/chat-bubbles.css?v=20261102-big-stickers">
+  <link rel="stylesheet" href="/chat-bubbles.css?v=20261103-settlement-stickers">
   <link rel="stylesheet" href="/tomato-interactions.css?v=20261011-tomato">
   <link rel="stylesheet" href="/seat-actions.css?v=20261011-seat-actions">
 </head>
@@ -152,7 +152,7 @@
                   <tbody>
                     <tr v-for="(row,index) in seriesRows" :key="row.playerId" :class="{top:index===0}">
                       <td>{{index+1}}</td><td class="series-player" tabindex="0" @mouseenter="showHonorTip($event,row.playerId)" @mouseleave="hideHonorTip" @focus="showHonorTip($event,row.playerId)" @blur="hideHonorTip">{{row.playerId}}</td>
-                      <td v-for="(ok,roundIndex) in row.results" :key="roundIndex"><span class="series-mark" :class="ok?'ok':'bad'" :aria-label="`第${roundIndex+1}局：${ok?'正确':'错误'}`">{{ok?'✓':'×'}}</span></td>
+                      <td v-for="(round,roundIndex) in row.rounds" :key="roundIndex" :aria-label="`第${roundIndex+1}局：正确 ${round.correct} 次，错误 ${round.wrong} 次`"><span class="series-round-score" :class="{ok:!round.wrong,bad:!round.correct,mixed:round.correct&&round.wrong}"><template v-if="round.correct">{{round.correct}}✓</template><template v-if="round.wrong">{{round.wrong}}×</template></span></td>
                       <td>{{row.correct}}</td><td>{{row.wrong}}</td>
                     </tr>
                   </tbody>
@@ -302,6 +302,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261103-honor-name-tip"></script>
+<script src="/game-client.js?v=20261103-comparison-credits"></script>
 </body>
 </html>
