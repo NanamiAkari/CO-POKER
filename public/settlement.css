@@ -362,3 +362,6 @@
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+.honor-name-tip.below { transform: translate(-50%, 0); }
+.honor-name-tip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #d0b374; }

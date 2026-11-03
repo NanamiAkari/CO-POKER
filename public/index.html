@@ -189,7 +189,7 @@
             <p class="detail-reason">{{comparisonDetail.reason}}</p>
           </aside>
         </transition>
-        <div v-if="honorTip" class="honor-name-tip" role="tooltip" :style="{left:honorTip.x+'px',top:honorTip.y+'px'}">{{honorTip.text}}</div>
+        <div v-if="honorTip" class="honor-name-tip" :class="{below:honorTip.below}" role="tooltip" :style="{left:honorTip.x+'px',top:honorTip.y+'px'}">{{honorTip.text}}</div>
       <aside class="room-chat" aria-label="房间聊天" @click.stop @keydown.esc.stop="closeChat">
         <button v-if="!chatOpen" class="chat-toggle" @click="toggleChat" aria-label="打开房间聊天" aria-expanded="false" aria-controls="room-chat-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h6"/></svg><span v-if="chatPreview" class="chat-preview"><strong>{{chatPreview.playerId===playerId?'我':chatPreview.playerId}}</strong><span>{{chatPreviewText}}</span></span><span v-else class="chat-placeholder">暂无消息</span><span v-if="chatUnread" class="chat-unread">{{chatUnread>99?'99+':chatUnread}}</span></button>
         <section v-else id="room-chat-panel" class="chat-panel">

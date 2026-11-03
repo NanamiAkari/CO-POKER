@@ -138,7 +138,8 @@
       const canvasRect=canvas.getBoundingClientRect();
       const scale=canvasRect.width/1200||1;
       const rect=element.getBoundingClientRect();
-      honorTip.value={text,x:Math.min(1030,Math.max(170,(rect.left+rect.width/2-canvasRect.left)/scale)),y:(rect.top-canvasRect.top)/scale-8};
+      const below=Boolean(element.classList?.contains('honor-name'));
+      honorTip.value={text,below,x:Math.min(1030,Math.max(170,(rect.left+rect.width/2-canvasRect.left)/scale)),y:(below?rect.bottom-canvasRect.top:rect.top-canvasRect.top)/scale+(below?8:-8)};
     }
     function showFinalTable(){if(!isResult.value)return;hideHonorTip();closeComparisonDetail();presentation.value='table';}
     function showSettlementSummary(){if(!isResult.value)return;hideHonorTip();closeComparisonDetail();presentation.value='summary';}
