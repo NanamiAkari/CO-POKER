@@ -34,6 +34,8 @@ class GameRoom {
     this.spectators = new Set();
     this.rematchConfirmed = new Set();
     this.comparisonSkipVotes = new Set();
+    this.seriesHistory = [];
+    this.lifetimeStats = new Map(this.players.map(player => [player.id, { correct: 0, wrong: 0 }]));
     this.comparisonSkip = false;
     this.replayEvents = [];
     this.eventSequence = 0;
@@ -53,10 +55,12 @@ class GameRoom {
   start() {
     if (this.closed) throw new Error('Room is closed');
     if (![PHASES.WAITING, PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(this.phase)) throw new Error('Room cannot start from current phase');
+    const startingNewSeries = this.phase === PHASES.WAITING || this.phase === PHASES.GAME_OVER;
     if (this.phase === PHASES.GAME_OVER) {
       this.successCount = 0;
       this.failureCount = 0;
     }
+    if (startingNewSeries) this.seriesHistory = [];
     this.deck = shuffle(createDeck({ includeJokers: this.includeJokers }), this.random);
     this.communityCards = [];
     this.players.forEach(player => {
@@ -159,6 +163,16 @@ class GameRoom {
     this.record('FINAL_HANDS_CALCULATED');
   }
 
+  playerOrderCorrect(player) {
+    return this.players.every(other => {
+      if (other === player) return true;
+      const handComparison = compareHands(player.finalHand, other.finalHand);
+      if (handComparison === 0) return true;
+      const coinComparison = Math.sign(other.currentCoin - player.currentCoin);
+      return coinComparison === Math.sign(handComparison);
+    });
+  }
+
   settle() {
     if (this.phase !== PHASES.FINAL_REVEAL) throw new Error('Final reveal is not ready');
     this.comparisonSkipVotes.clear();
@@ -176,6 +190,14 @@ class GameRoom {
     }
     if (success) this.successCount += 1;
     else this.failureCount += 1;
+    const correctPlayerIds = this.players.filter(player => this.playerOrderCorrect(player)).map(player => player.id);
+    for (const player of this.players) {
+      const stats = this.lifetimeStats.get(player.id) || { correct: 0, wrong: 0 };
+      if (correctPlayerIds.includes(player.id)) stats.correct += 1;
+      else stats.wrong += 1;
+      this.lifetimeStats.set(player.id, stats);
+    }
+    this.seriesHistory.push({ round: this.seriesHistory.length + 1, success, correctPlayerIds });
     this.lastResult = { success, comparisons };
     this.phase = (this.successCount >= 3 || this.failureCount >= 3) ? PHASES.GAME_OVER : PHASES.SETTLEMENT;
     this.record('GAME_SETTLED', this.lastResult);

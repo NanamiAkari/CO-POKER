@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
-  <link rel="stylesheet" href="/settlement.css?v=20261005-controls">
+  <link rel="stylesheet" href="/settlement.css?v=20261103-series-table">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
@@ -132,7 +132,28 @@
           </section>
           <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
             <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
-            <div class="summary-right"><div class="summary-tabs"><button v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :class="{active:summaryIndex===i}" :aria-label="`查看 ${entry.playerId} 的最大牌组`" @click="summaryIndex=i"><img :src="coinImage(entry.coin)" alt=""></button></div><div v-if="summaryEntry"><div class="summary-name">{{summaryEntry.playerId}}</div><div class="five-cards"><playing-card v-for="card in summaryEntry.hand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(summaryEntry.hand,card)"></playing-card></div><div class="hand-label">{{summaryEntry.hand.categoryName}}</div></div><p class="record-help">悬停或点击上方比较标记，查看详细结果</p></div>
+            <div v-if="state.phase==='GAME_OVER'&&seriesHistory.length" class="summary-right series-board" aria-label="本场历史结算">
+              <div class="series-board-tabs" role="tablist" aria-label="战绩范围">
+                <button type="button" role="tab" :aria-selected="seriesTableMode==='series'" :class="{active:seriesTableMode==='series'}" @click="seriesTableMode='series'">本场</button>
+                <button type="button" role="tab" :aria-selected="seriesTableMode==='lifetime'" :class="{active:seriesTableMode==='lifetime'}" @click="seriesTableMode='lifetime'">累计</button>
+              </div>
+              <div class="series-board-scroll">
+                <table class="series-table" :class="{lifetime:seriesTableMode==='lifetime'}" :aria-label="seriesTableMode==='series'?'本场每局正确与错误统计':'房间累计正确与错误统计'">
+                  <thead v-if="seriesTableMode==='series'">
+                    <tr><th scope="col">#</th><th scope="col">玩家</th><th v-for="round in seriesHistory" :key="round.round" scope="col">第{{round.round}}局<i class="series-round-result" :class="{failed:!round.success}" :title="round.success?'团队成功':'团队失败'">{{round.success?'✓':'×'}}</i></th><th scope="col">正确</th><th scope="col">错误</th></tr>
+                  </thead>
+                  <thead v-else><tr><th scope="col">#</th><th scope="col">玩家</th><th scope="col">正确</th><th scope="col">错误</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(row,index) in seriesTableRows" :key="row.playerId" :class="{top:index===0}">
+                      <td>{{index+1}}</td><td class="series-player" :title="row.playerId">{{row.playerId}}</td>
+                      <template v-if="seriesTableMode==='series'"><td v-for="(ok,roundIndex) in row.results" :key="roundIndex"><span class="series-mark" :class="ok?'ok':'bad'" :aria-label="`第${roundIndex+1}局：${ok?'正确':'错误'}`">{{ok?'✓':'×'}}</span></td></template>
+                      <td>{{row.correct}}</td><td>{{row.wrong}}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-else class="summary-right"><div class="summary-tabs"><button v-for="(entry,i) in sortedFinalHands" :key="entry.playerId" :class="{active:summaryIndex===i}" :aria-label="`查看 ${entry.playerId} 的最大牌组`" @click="summaryIndex=i"><img :src="coinImage(entry.coin)" alt=""></button></div><div v-if="summaryEntry"><div class="summary-name">{{summaryEntry.playerId}}</div><div class="five-cards"><playing-card v-for="card in summaryEntry.hand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(summaryEntry.hand,card)"></playing-card></div><div class="hand-label">{{summaryEntry.hand.categoryName}}</div></div><p class="record-help">悬停或点击上方比较标记，查看详细结果</p></div>
           </section>
         </transition>
         <button v-if="showSkipComparison" class="skip-comparison" :disabled="!canSkipComparison" @click="requestComparisonSkip"><span>{{hasSkippedComparison?'已选择跳过':'跳过全部比较'}}</span><small aria-live="polite" aria-atomic="true">{{state.comparisonSkipVotes.length}}/{{state.players.length}}</small></button>
@@ -257,6 +278,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261102-big-stickers"></script>
+<script src="/game-client.js?v=20261103-series-table"></script>
 </body>
 </html>

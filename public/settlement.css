@@ -53,3 +53,111 @@
 .detail-reason{border-top:1px solid #a9986738;padding-top:11px;margin:14px 0 0;color:#c6d0bd;font-size:12px;line-height:1.7;text-align:center}
 @keyframes verdict-stamp{0%{opacity:0;transform:scale(1.5) rotate(-12deg)}75%{opacity:1;transform:scale(.92) rotate(3deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
 @media(prefers-reduced-motion:reduce){.complete .marker-verdict{animation:none}.order-players li,.comparison-marker{transition:none}}
+
+/* Big-game history table: shown only at GAME_OVER, beside the final result. */
+.settlement-scene .summary-right.series-board {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  text-align: left;
+  align-self: stretch;
+}
+.series-board-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.series-board-tabs button {
+  padding: 3px 9px;
+  border: 1px solid #b9a36a55;
+  border-radius: 999px;
+  background: #10261f;
+  color: #a9b9a2;
+  font-size: 10px;
+  line-height: 15px;
+  cursor: pointer;
+}
+.series-board-tabs button:hover {
+  border-color: #d0b77688;
+  color: #ead9b0;
+}
+.series-board-tabs button.active {
+  border-color: #d8bd7d;
+  background: #3c4f32;
+  color: #f0dfb7;
+}
+.series-board-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid #b9a36a2e;
+}
+.series-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #d8d2bd;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.series-table th,
+.series-table td {
+  padding: 3px 4px;
+  border-bottom: 1px solid #b9a36a1f;
+  text-align: center;
+  white-space: nowrap;
+}
+.series-table th {
+  color: #aeb99f;
+  font-size: 10px;
+  font-weight: 400;
+}
+.series-table th:first-child,
+.series-table td:first-child {
+  width: 22px;
+  color: #8fa28a;
+}
+.series-table th:nth-child(2),
+.series-table td:nth-child(2) {
+  max-width: 92px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+.series-player {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.series-table.lifetime {
+  width: auto;
+  min-width: 360px;
+  margin: 0 auto;
+}
+.series-table.lifetime th:nth-child(2),
+.series-table.lifetime td:nth-child(2) {
+  width: 140px;
+  max-width: 140px;
+}
+.series-table tr.top td {
+  background: #d7bc7110;
+  color: #f0d9a6;
+}
+.series-round-result {
+  margin-left: 3px;
+  color: #8acba7;
+  font-style: normal;
+}
+.series-round-result.failed { color: #e8a48f; }
+.series-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+.series-mark.ok { color: #b5e7c7; background: #2c614a; }
+.series-mark.bad { color: #f3b8a7; background: #6b3930; }

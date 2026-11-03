@@ -471,6 +471,50 @@ test('five-player settlement retains the full order and completed verdicts, with
   assert.equal((final.match(/class="comparison-marker complete/g)||[]).length,4);
 });
 
+test('game-over settlement sorts the series table and switches to lifetime totals', async () => {
+  const seriesHistory = [
+    { round: 1, success: true, correctPlayerIds: ['A', 'B', 'C'] },
+    { round: 2, success: true, correctPlayerIds: ['A', 'B', 'C'] },
+    { round: 3, success: false, correctPlayerIds: ['A'] },
+    { round: 4, success: true, correctPlayerIds: ['A', 'B', 'C'] },
+    { round: 5, success: false, correctPlayerIds: ['B'] }
+  ];
+  const lifetimeStats = [
+    { playerId: 'A', correct: 7, wrong: 2 },
+    { playerId: 'B', correct: 8, wrong: 1 },
+    { playerId: 'C', correct: 6, wrong: 3 }
+  ];
+  const fixture = {
+    phase: 'GAME_OVER', players: [{ id: 'A' }, { id: 'B' }, { id: 'C' }],
+    seriesHistory, lifetimeStats, successCount: 3, failureCount: 2,
+    result: { success: false, comparisons: [] }, finalHands: [], communityMatches: []
+  };
+  const output = await renderScreen(v => {
+    v.inRoom.value = true; v.playerId.value = 'A'; v.presentation.value = 'summary';
+    Object.assign(v.state, fixture);
+    assert.deepEqual([...v.seriesRows.value].map(row => [row.playerId, row.correct, row.wrong]), [['A', 4, 1], ['B', 4, 1], ['C', 3, 2]]);
+    assert.deepEqual([...v.lifetimeRows.value].map(row => row.playerId), ['B', 'A', 'C']);
+  });
+  assert.match(output, /class="summary-right series-board"/);
+  assert.match(output, /本场每局正确与错误统计/);
+  assert.match(output, /第1局/);
+  assert.match(output, /第5局/);
+  assert.equal((output.match(/class="series-mark/g) || []).length, 15);
+  const order = [...output.matchAll(/<td class="series-player" title="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(order, ['A', 'B', 'C']);
+  assert.match(output, /累计/);
+
+  const lifetime = await renderScreen(v => {
+    v.inRoom.value = true; v.playerId.value = 'A'; v.presentation.value = 'summary';
+    v.seriesTableMode.value = 'lifetime';
+    Object.assign(v.state, fixture);
+  });
+  assert.match(lifetime, /房间累计正确与错误统计/);
+  assert.doesNotMatch(lifetime, /第1局/);
+  const lifetimeOrder = [...lifetime.matchAll(/<td class="series-player" title="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(lifetimeOrder, ['B', 'A', 'C']);
+});
+
 test('settlement can hide the result to inspect the final table and restore it', async () => {
   let view;
   const fixture = fivePlayerResult();

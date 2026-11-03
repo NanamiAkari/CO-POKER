@@ -123,6 +123,11 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     comparisonSkip: room.game?.comparisonSkip || false,
     comparisonSkipVotes: room.game ? [...room.game.comparisonSkipVotes] : [],
     players: room.game ? room.game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin })) : [...room.clients.values()].filter(c => c.role === 'PLAYER').map(c => ({ id: c.id, currentCoin: null, coinHistory: [] })),
+    seriesHistory: room.game ? room.game.seriesHistory.map(entry => ({ round: entry.round, success: entry.success, correctPlayerIds: entry.correctPlayerIds.slice() })) : [],
+    lifetimeStats: room.game ? room.game.players.map(player => {
+      const stats = room.game.lifetimeStats.get(player.id) || { correct: 0, wrong: 0 };
+      return { playerId: player.id, correct: stats.correct, wrong: stats.wrong };
+    }) : [],
     spectators: room.spectators
   });
   const viewFor = (room, client) => {

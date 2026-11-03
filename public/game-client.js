@@ -5,7 +5,7 @@
   const Art = window.TabletopArt;
   const Highlights = window.HandHighlights;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
-  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,maxPlayers:8,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[]});
+  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,maxPlayers:8,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[],seriesHistory:[],lifetimeStats:[]});
   const saved = (() => { try { return JSON.parse(localStorage.getItem('poker.preferences.v2') || '{}'); } catch { return {}; } })();
   const app = createApp({setup() {
     const inRoom=ref(false), panel=ref(null), ruleStep=ref(0), roomId=ref(''), playerId=ref(''), role=ref('PLAYER');
@@ -13,7 +13,7 @@
     const connected=ref(false), pending=ref(false), busy=ref(false), scale=ref(1), fullscreen=ref(false);
     const state=reactive(freshState()), presentation=ref('idle'), revealIndex=ref(0), selectionLit=ref(false), compareIndex=ref(0), verdictVisible=ref(false), summaryIndex=ref(0);
     const activeSeatAction=ref(null);
-    const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null);
+    const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series');
     const notice=ref(''), noticeError=ref(false);
     const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false});
@@ -59,6 +59,23 @@
     const phaseIndex=computed(()=>isResult.value?4:COIN_PHASES.indexOf(state.phase));
     const sortedFinalHands=computed(()=>[...state.finalHands].sort((a,b)=>b.coin-a.coin));
     const denseSettlement=computed(()=>sortedFinalHands.value.length>5);
+    const seriesHistory=computed(()=>Array.isArray(state.seriesHistory)?state.seriesHistory:[]);
+    const seriesRows=computed(()=>{
+      const history=seriesHistory.value;
+      return state.players.map((player,index)=>{
+        const results=history.map(round=>Array.isArray(round.correctPlayerIds)&&round.correctPlayerIds.includes(player.id));
+        const correct=results.filter(Boolean).length;
+        return {playerId:player.id,results,correct,wrong:history.length-correct,index};
+      }).sort((a,b)=>b.correct-a.correct||a.wrong-b.wrong||a.index-b.index);
+    });
+    const lifetimeRows=computed(()=>{
+      const stats=new Map((Array.isArray(state.lifetimeStats)?state.lifetimeStats:[]).map(item=>[item.playerId,item]));
+      return state.players.map((player,index)=>{
+        const item=stats.get(player.id)||{};
+        return {playerId:player.id,correct:item.correct||0,wrong:item.wrong||0,index};
+      }).sort((a,b)=>b.correct-a.correct||a.wrong-b.wrong||a.index-b.index);
+    });
+    const seriesTableRows=computed(()=>seriesTableMode.value==='lifetime'?lifetimeRows.value:seriesRows.value);
     const revealEntry=computed(()=>sortedFinalHands.value[revealIndex.value]);
     const comparison=computed(()=>state.result?.comparisons[compareIndex.value]);
     const compareEntries=computed(()=>comparison.value?[comparison.value.higherPlayerId,comparison.value.lowerPlayerId].map(id=>state.finalHands.find(p=>p.playerId===id)).filter(Boolean):[]);
@@ -399,9 +416,10 @@
     },{immediate:true});
     watch([canSendTomato,()=>state.players.map(player=>player.id)],()=>{if(!canSendTomato.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
+    watch(()=>state.phase,phase=>{if(phase==='GAME_OVER')seriesTableMode.value='series';});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,seriesTableRows,seriesTableMode,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

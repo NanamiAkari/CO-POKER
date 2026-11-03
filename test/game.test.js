@@ -38,6 +38,72 @@ test('supports eight players with coins one through eight and seven comparisons'
   assert.throws(() => new GameRoom({ players: [...players, 'i'] }), /At most 8 players/);
 });
 
+test('records per-player order correctness, series history and lifetime totals', () => {
+  const room = new GameRoom({ players: ['weak', 'middle', 'strong'] });
+  room.phase = PHASES.FINAL_REVEAL;
+  room.players[0].finalHand = { category: 0, tiebreak: [14, 13, 11, 9, 7] };
+  room.players[1].finalHand = { category: 1, tiebreak: [2, 14, 13, 11, 9] };
+  room.players[2].finalHand = { category: 2, tiebreak: [3, 2, 14] };
+  room.players[0].currentCoin = 3;
+  room.players[1].currentCoin = 1;
+  room.players[2].currentCoin = 2;
+  const result = room.settle();
+  assert.equal(result.success, false);
+  assert.deepEqual(room.seriesHistory, [{ round: 1, success: false, correctPlayerIds: ['weak'] }]);
+  assert.deepEqual([...room.lifetimeStats], [
+    ['weak', { correct: 1, wrong: 0 }],
+    ['middle', { correct: 0, wrong: 1 }],
+    ['strong', { correct: 0, wrong: 1 }]
+  ]);
+  assert.equal(room.phase, PHASES.SETTLEMENT);
+});
+
+test('keeps history across next rounds, resets it for a new series and keeps lifetime totals', () => {
+  const room = new GameRoom({ players: ['a', 'b'] });
+  const playSuccess = () => {
+    room.phase = PHASES.FINAL_REVEAL;
+    room.players[0].currentCoin = 2;
+    room.players[1].currentCoin = 1;
+    room.players[0].finalHand = { category: 0, tiebreak: [14, 13, 11, 9, 7] };
+    room.players[1].finalHand = { category: 1, tiebreak: [2, 14, 13, 11, 9] };
+    room.settle();
+  };
+  const nextRound = () => {
+    room.confirmRematch('a');
+    room.confirmRematch('b');
+  };
+
+  playSuccess(); // series game 1
+  assert.equal(room.seriesHistory.length, 1);
+  nextRound(); // ordinary next round
+  playSuccess(); // series game 2
+  assert.equal(room.seriesHistory.length, 2);
+  nextRound();
+  playSuccess(); // series game 3 -> GAME_OVER
+  assert.equal(room.phase, PHASES.GAME_OVER);
+  assert.equal(room.seriesHistory.length, 3);
+  assert.deepEqual([...room.lifetimeStats], [['a', { correct: 3, wrong: 0 }], ['b', { correct: 3, wrong: 0 }]]);
+
+  nextRound(); // new big game
+  assert.equal(room.phase, PHASES.ROUND_1_COINS);
+  assert.equal(room.seriesHistory.length, 0);
+  assert.equal(room.successCount, 0);
+  assert.equal(room.failureCount, 0);
+  assert.deepEqual([...room.lifetimeStats], [['a', { correct: 3, wrong: 0 }], ['b', { correct: 3, wrong: 0 }]]);
+});
+
+test('ties do not constrain individual order correctness', () => {
+  const room = new GameRoom({ players: ['a', 'b'] });
+  room.phase = PHASES.FINAL_REVEAL;
+  room.players[0].currentCoin = 2;
+  room.players[1].currentCoin = 1;
+  room.players[0].finalHand = { category: 1, tiebreak: [2, 14, 13, 11, 9] };
+  room.players[1].finalHand = { category: 1, tiebreak: [2, 14, 13, 11, 9] };
+  room.settle();
+  assert.equal(room.lastResult.success, true);
+  assert.deepEqual(room.seriesHistory[0].correctPlayerIds, ['a', 'b']);
+});
+
 test('settles adjacent comparisons and treats ties as passing', () => {
   const room = new GameRoom({ players: ['a', 'b'] });
   room.phase = PHASES.FINAL_REVEAL;
