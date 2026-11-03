@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
-  <link rel="stylesheet" href="/settlement.css?v=20261103-series-table">
+  <link rel="stylesheet" href="/settlement.css?v=20261103-honor-podium">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
@@ -134,7 +134,7 @@
             <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
             <div v-if="state.phase==='GAME_OVER'&&seriesHistory.length" class="summary-right series-board" aria-label="本场历史结算">
               <div class="series-board-head">
-                <span class="series-board-title">{{seriesTableMode==='series'?'本场战绩':'房间累计'}}<small v-if="seriesTableMode==='lifetime'">共 {{lifetimeRoundCount}} 局</small></span>
+                <span class="series-board-title">{{seriesTableMode==='series'?'本场战绩':'房间荣誉榜'}}<small v-if="seriesTableMode==='lifetime'">共 {{lifetimeRoundCount}} 局</small></span>
                 <div class="series-board-tabs" role="tablist" aria-label="战绩范围">
                   <button type="button" role="tab" :aria-selected="seriesTableMode==='series'" :class="{active:seriesTableMode==='series'}" @click="seriesTableMode='series'">本场</button>
                   <button type="button" role="tab" :aria-selected="seriesTableMode==='lifetime'" :class="{active:seriesTableMode==='lifetime'}" @click="seriesTableMode='lifetime'">累计</button>
@@ -153,13 +153,22 @@
                     </tr>
                   </tbody>
                 </table>
-                <div v-else class="cumulative-grid" :class="{multi:lifetimeRows.length>3}">
-                  <article v-for="(row,index) in lifetimeRows" :key="row.playerId" class="cumulative-card" :class="'rank-'+(index+1)" :aria-label="`${row.playerId}，正确 ${row.correct} 次，错误 ${row.wrong} 次，正确率 ${row.rate}%`">
-                    <span class="cumulative-rank">{{index+1}}</span>
-                    <div class="cumulative-person"><strong :title="row.playerId">{{row.playerId}}</strong><div class="cumulative-progress" aria-hidden="true"><i :style="{width:row.rate+'%'}"></i></div></div>
-                    <span class="cumulative-count ok"><b>{{row.correct}}</b><small>正确</small></span>
-                    <span class="cumulative-count bad"><b>{{row.wrong}}</b><small>错误</small></span>
-                  </article>
+                <div v-else class="cumulative-honor">
+                  <div class="podium" :class="'podium-'+podiumRows.length">
+                    <article v-for="(row,index) in podiumRows" :key="row.playerId" class="podium-card" :class="'place-'+(index+1)" :aria-label="`第 ${index+1} 名，${row.playerId}，正确 ${row.correct} 次，错误 ${row.wrong} 次`">
+                      <span v-if="index===0" class="podium-crown" aria-hidden="true">♛</span>
+                      <span class="podium-medal">{{index+1}}</span>
+                      <strong class="podium-name" :title="row.playerId">{{row.playerId}}</strong>
+                      <div class="podium-tokens"><span class="podium-token ok"><b>{{row.correct}}</b><small>✓</small></span><span class="podium-token bad"><b>{{row.wrong}}</b><small>×</small></span></div>
+                    </article>
+                  </div>
+                  <div v-if="restRows.length" class="honor-rest">
+                    <article v-for="(row,index) in restRows" :key="row.playerId" class="honor-row" :aria-label="`第 ${index+4} 名，${row.playerId}，正确 ${row.correct} 次，错误 ${row.wrong} 次`">
+                      <span class="honor-rank">{{index+4}}</span>
+                      <strong class="honor-name" :title="row.playerId">{{row.playerId}}</strong>
+                      <span class="honor-score"><b class="ok">{{row.correct}}</b><small>✓</small><b class="bad">{{row.wrong}}</b><small>×</small></span>
+                    </article>
+                  </div>
                 </div>
               </div>
             </div>
@@ -288,6 +297,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261103-series-table"></script>
+<script src="/game-client.js?v=20261103-honor-podium"></script>
 </body>
 </html>
