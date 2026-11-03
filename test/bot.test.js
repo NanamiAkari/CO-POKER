@@ -35,7 +35,7 @@ test('bots choose a free coin from their own hand strength', () => {
   assert.equal(chooseBotCoin(weak.game, weak.bot, () => 0), null);
 });
 
-test('bot coin actions are serialized one bot at a time in seat order', () => {
+test('all bots in a phase can take coins concurrently', () => {
   const game = new GameRoom({ players: ['human', 'Robot Jack', 'Robot Sam'], botIds: ['Robot Jack', 'Robot Sam'], random: () => 0 });
   const room = { game, hostId: 'human' };
   game.phase = PHASES.ROUND_1_COINS;
@@ -44,10 +44,11 @@ test('bot coin actions are serialized one bot at a time in seat order', () => {
   const jack = game.players.find(player => player.id === 'Robot Jack');
   const sam = game.players.find(player => player.id === 'Robot Sam');
   const timers = [];
-  let driver, actionMeta;
+  const actions = [];
+  let driver;
   driver = new BotDriver({
     room,
-    onChange: payload => { actionMeta = payload; driver.sync(); },
+    onChange: payload => { actions.push(payload.coinAction); driver.sync(); },
     random: () => 0,
     setTimeoutFn: callback => { timers.push(callback); return timers.length; },
     clearTimeoutFn: () => {},
@@ -55,14 +56,14 @@ test('bot coin actions are serialized one bot at a time in seat order', () => {
   });
 
   driver.sync();
-  assert.equal(timers.length, 1, 'only one bot may be waiting to take a coin');
+  assert.equal(timers.length, 2, 'each bot gets its own coin timer');
   timers.shift()();
   assert.notEqual(jack.currentCoin, null);
-  assert.deepEqual(actionMeta, { coinAction: { type: 'MOVE', coin: jack.currentCoin, fromPlayerId: null, toPlayerId: 'Robot Jack' } });
-  assert.equal(sam.currentCoin, null, 'the second bot waits for the first action to finish');
-  assert.equal(timers.length, 1);
+  assert.equal(sam.currentCoin, null, 'the second timer can still be pending');
   timers.shift()();
   assert.notEqual(sam.currentCoin, null);
+  assert.deepEqual(actions.map(action => action.toPlayerId), ['Robot Jack', 'Robot Sam']);
+  assert.ok(actions.every(action => action.type === 'MOVE' && action.fromPlayerId === null));
   assert.equal(timers.length, 0);
   driver.stop();
 });
