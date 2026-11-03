@@ -357,6 +357,36 @@ test('waiting room grows with the actual player count and keeps one invite slot'
   }
 });
 
+test('host manages bots in the waiting room while bot seats look like every other seat', async () => {
+  const players=[{id:'host',currentCoin:null},{id:'Robot Jack',currentCoin:null},{id:'Robot Sam',currentCoin:null}];
+  const host=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='host';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'WAITING',hostId:'host',maxPlayers:8,players,bots:['Robot Jack','Robot Sam']});
+    assert.equal(v.canAddBot.value,true);
+    assert.equal(v.bots.value.length,2);
+  });
+  assert.match(host,/＋ 人机/);
+  assert.match(host,/aria-label="移除 Robot Jack"/);
+  const botSeat=host.match(/<article[^>]*data-player="Robot Jack"[\s\S]*?<\/article>/)[0];
+  assert.doesNotMatch(botSeat,/AI|人机|机器人/,'the seat itself carries no bot marker');
+  assert.match(botSeat,/class="avatar"/);
+
+  const guest=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='guest';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'WAITING',hostId:'host',maxPlayers:8,players:players.concat([{id:'guest',currentCoin:null}]),bots:[]});
+    assert.equal(v.canAddBot.value,false);
+  });
+  assert.doesNotMatch(guest,/＋ 人机/);
+  assert.doesNotMatch(guest,/aria-label="移除 /);
+
+  const live=await renderScreen(v=>{
+    v.inRoom.value=true;v.connected.value=true;v.playerId.value='host';v.roomId.value='ABC123';
+    Object.assign(v.state,{phase:'ROUND_1_COINS',hostId:'host',maxPlayers:8,players,bots:['Robot Jack','Robot Sam']});
+    assert.equal(v.canAddBot.value,false);
+  });
+  assert.doesNotMatch(live,/＋ 人机/,'bots are locked once the game starts');
+});
+
 test('a two-player game keeps a single normal-width opponent seat', async () => {
   const table=await renderScreen(v=>{
     v.inRoom.value=true;v.connected.value=true;v.playerId.value='A';v.role.value='PLAYER';v.roomId.value='ABC123';

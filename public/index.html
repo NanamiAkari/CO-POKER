@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#132b26">
   <title>CO-POKER · 德扑</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/game.css?v=20260930b">
+  <link rel="stylesheet" href="/game.css?v=20261103-bots">
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
@@ -100,7 +100,11 @@
           <h2>等待玩家</h2>
           <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span><span v-if="state.options?.includeJokers">含大小王 · 54 张</span></div>
           <button v-if="isHost" class="gold-button" :disabled="state.players.length<2||pending||!connected" @click="command('START_GAME')">开始游戏 <span aria-hidden="true">▷</span></button>
-          <p v-else>等待房主开始</p><p>{{state.players.length}} / {{maxPlayers}} 已入座 · 房间号 {{roomId}}</p>
+          <div v-if="isHost" class="bot-controls">
+            <button type="button" class="bot-add-button" :disabled="!canAddBot" @click="addBot">＋ 人机</button>
+            <button v-for="bot in bots" :key="bot" type="button" class="bot-chip" :aria-label="`移除 ${bot}`" @click="removeBot(bot)">{{bot}}<span aria-hidden="true">×</span></button>
+          </div>
+          <p v-if="!isHost">等待房主开始</p><p>{{state.players.length}} / {{maxPlayers}} 已入座 · 房间号 {{roomId}}</p>
         </section>
         <template v-else>
           <div class="deck" aria-hidden="true"><img :src="cardBack" alt=""></div>
@@ -297,6 +301,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261103-honor-podium-clean"></script>
+<script src="/game-client.js?v=20261103-bots"></script>
 </body>
 </html>

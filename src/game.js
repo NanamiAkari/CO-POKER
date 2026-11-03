@@ -14,7 +14,7 @@ const PHASES = Object.freeze({
 });
 
 class GameRoom {
-  constructor({ players, handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
+  constructor({ players, botIds = [], handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
     if (!players || players.length < 2) throw new Error('At least two players are required');
     if (players.length > MAX_PLAYERS) throw new Error(`At most ${MAX_PLAYERS} players are allowed`);
     if (new Set(players).size !== players.length) throw new Error('Player names must be unique');
@@ -23,7 +23,10 @@ class GameRoom {
     if (!['all', 'self', 'none'].includes(historyVisibility)) throw new Error('Invalid historyVisibility');
     if (typeof includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
     if (!Number.isInteger(spectatorSlots) || spectatorSlots < 0 || spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
-    this.players = players.map(id => ({ id, holeCards: [], currentCoin: null, coinHistory: [], finalHand: null }));
+    // isBot is server-only. Player snapshots are projected by id below and
+    // must never expose a human/bot distinction to other clients.
+    this.botIds = new Set(Array.isArray(botIds) ? botIds.filter(id => players.includes(id)) : []);
+    this.players = players.map(id => ({ id, isBot: this.botIds.has(id), holeCards: [], currentCoin: null, coinHistory: [], finalHand: null }));
     this.handCardCount = handCardCount;
     this.handUsageRule = handUsageRule;
     this.historyVisibility = historyVisibility;

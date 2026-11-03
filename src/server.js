@@ -5,6 +5,7 @@ const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { GameRoom, PHASES, MAX_PLAYERS } = require('./game');
 const { RoomChat, ChatError } = require('./chat');
+const { BOT_NAMES, BotDriver } = require('./bot');
 
 function validateOptions(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid room options');
@@ -49,6 +50,8 @@ class RoomManager {
       clients: new Map(),
       spectators: [],
       game: null,
+      bots: [],
+      botDriver: null,
       options,
       chat: new RoomChat(this.chatOptions),
       tomato: { recentBySender: new Map() }
@@ -59,7 +62,7 @@ class RoomManager {
   get(id) { return this.rooms.get(id); }
 }
 
-function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(), heartbeatIntervalMs = 25000 } = {}) {
+function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(), heartbeatIntervalMs = 25000, botOptions = {} } = {}) {
   const httpServer = http.createServer((req, res) => {
     if (req.url === '/health' || req.url === '/api/health') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ service: 'cooperative-poker', status: 'ok' })); }
     const requestUrl = new URL(req.url, 'http://localhost');
@@ -115,14 +118,18 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
       timestamp: now
     };
   };
-  const state = room => ({
+  const state = (room, viewer) => ({
     roomId: room.id, hostId: room.hostId, options: room.options, maxPlayers: MAX_PLAYERS,
     phase: room.game?.phase || PHASES.WAITING,
     successCount: room.game?.successCount || 0, failureCount: room.game?.failureCount || 0,
     rematchConfirmed: room.game ? [...room.game.rematchConfirmed] : [],
     comparisonSkip: room.game?.comparisonSkip || false,
     comparisonSkipVotes: room.game ? [...room.game.comparisonSkipVotes] : [],
-    players: room.game ? room.game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin })) : [...room.clients.values()].filter(c => c.role === 'PLAYER').map(c => ({ id: c.id, currentCoin: null, coinHistory: [] })),
+    players: room.game ? room.game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin })) : lobbyPlayerIds(room).map(id => ({ id, currentCoin: null, coinHistory: [] })),
+    // The lobby roster needs bot names only for the host's add/remove controls.
+    // Keeping it out of other clients also keeps the wire state free of any
+    // human/bot distinction for everyone else at the table.
+    bots: viewer && viewer.id === room.hostId ? room.bots.slice() : [],
     seriesHistory: room.game ? room.game.seriesHistory.map(entry => ({ round: entry.round, success: entry.success, correctPlayerIds: entry.correctPlayerIds.slice() })) : [],
     lifetimeStats: room.game ? room.game.players.map(player => {
       const stats = room.game.lifetimeStats.get(player.id) || { correct: 0, wrong: 0 };
@@ -151,15 +158,30 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
       communityCards: game?.communityCards || [], ownHoleCards: [], ownEstimatedHand: null, coinHistory: [],
       ...(game ? { players: game.players.map(p => ({ id: p.id, currentCoin: p.currentCoin, coinHistory: room.options.historyVisibility === 'all' ? p.coinHistory.slice() : [] })) } : {})
     };
-    return { ...state(room), ...privateView,
+    return { ...state(room, client), ...privateView,
       finalHands: reveal ? game.players.map(p => ({ playerId: p.id, coin: p.currentCoin, holeCards: p.holeCards, hand: p.finalHand })) : [],
       result: game?.lastResult || null
     };
   };
-  const broadcast = (room, type, payload = {}) => room.clients.forEach(client => { if (client.readyState === 1) send(client, type, { ...payload, state: viewFor(room, client) }); });
-  const playerIds = room => [...room.clients.values()].filter(c => c.role === 'PLAYER').map(c => c.id);
+  const broadcast = (room, type, payload = {}) => {
+    room.clients.forEach(client => { if (client.readyState === 1) send(client, type, { ...payload, state: viewFor(room, client) }); });
+    room.botDriver?.sync();
+  };
+  const humanPlayerIds = room => [...room.clients.values()].filter(c => c.role === 'PLAYER').map(c => c.id);
+  const lobbyPlayerIds = room => [...humanPlayerIds(room), ...room.bots];
+  // Social actions (tomato and any future ones) resolve targets here so
+  // server-side bot seats are first-class players, not fake WebSocket clients.
+  const isRoomPlayer = (room, id) => {
+    const client = room.clients.get(id);
+    if (client) return client.role === 'PLAYER';
+    if (room.game) return room.game.players.some(player => player.id === id);
+    return room.bots.includes(id);
+  };
   const detach = ws => { ws.room = null; ws.id = null; ws.role = null; };
   const closeRoom = (room, reason) => {
+    room.botDriver?.stop();
+    room.botDriver = null;
+    room.bots = [];
     for (const client of room.clients.values()) {
       send(client, 'ROOM_ENDED', { roomId: room.id, reason });
       room.chat.forget(client);
@@ -180,7 +202,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
     detach(ws);
     if (explicit) send(ws, 'ROOM_LEFT', { roomId: room.id });
     if (room.game && wasPlayer) return closeRoom(room, explicit ? 'PLAYER_LEFT' : 'PLAYER_DISCONNECTED');
-    if (room.hostId === id) room.hostId = playerIds(room)[0] || null;
+    if (room.hostId === id) room.hostId = humanPlayerIds(room)[0] || null;
     if (!room.hostId) return closeRoom(room, 'NO_PLAYERS');
     broadcast(room, 'ROOM_STATE');
   };
@@ -216,9 +238,8 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
             : typeof msg.toPlayerId === 'string' ? msg.toPlayerId.trim()
               : typeof msg.action?.toPlayerId === 'string' ? msg.action.toPlayerId.trim() : '';
           if (!targetId) throw tomatoError('TOMATO_INVALID_TARGET', '请选择目标玩家');
-          const target = room.clients.get(targetId);
-          if (!target || target.role !== 'PLAYER') throw tomatoError('TOMATO_UNKNOWN_TARGET', '目标玩家不在房间内');
           if (targetId === ws.id) throw tomatoError('TOMATO_SELF_TARGET', '不能向自己投掷番茄');
+          if (!isRoomPlayer(room, targetId)) throw tomatoError('TOMATO_UNKNOWN_TARGET', '目标玩家不在房间内');
           const action = acceptTomato(room, ws.id, targetId);
           // This is deliberately a room event without a state snapshot. The
           // client owns the animation and the game state remains untouched.
@@ -236,11 +257,11 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
         if (msg.type === 'JOIN_ROOM') {
           if (ws.room) throw new Error('Leave the current room first');
           const id = playerName(msg.playerId);
-          if (room.clients.has(id)) throw new Error('Player name is already in use');
+          if (room.clients.has(id) || room.bots.includes(id)) throw new Error('Player name is already in use');
           if (msg.role !== undefined && !['PLAYER', 'SPECTATOR'].includes(msg.role)) throw new Error('Invalid role');
           const role = msg.role || 'PLAYER';
           if (role === 'PLAYER' && room.game) throw new Error('Game already started');
-          if (role === 'PLAYER' && playerIds(room).length >= MAX_PLAYERS) throw new Error('Player positions are full');
+          if (role === 'PLAYER' && lobbyPlayerIds(room).length >= MAX_PLAYERS) throw new Error('Player positions are full');
           if (role === 'SPECTATOR' && room.spectators.length >= room.options.spectatorSlots) throw new Error('Spectator positions are full');
           ws.room = room; ws.id = id; ws.role = role; room.clients.set(id, ws);
           if (role === 'SPECTATOR') room.spectators.push(id);
@@ -248,11 +269,31 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
         }
         if (ws.room !== room || room.clients.get(ws.id) !== ws) throw new Error('Not a member of this room');
         if (msg.type === 'LEAVE_ROOM') return leaveRoom(ws, true);
+        if (msg.type === 'ADD_BOT') {
+          if (ws.id !== room.hostId || ws.role !== 'PLAYER') throw new Error('Only host can add bots');
+          if (room.game) throw new Error('Bots can only be added before the game starts');
+          if (lobbyPlayerIds(room).length >= MAX_PLAYERS) throw new Error('Player positions are full');
+          const used = new Set([...lobbyPlayerIds(room), ...room.clients.keys()]);
+          const name = BOT_NAMES.find(candidate => !used.has(candidate));
+          if (!name) throw new Error('No bot names are available');
+          room.bots.push(name);
+          return broadcast(room, 'ROOM_STATE');
+        }
+        if (msg.type === 'REMOVE_BOT') {
+          if (ws.id !== room.hostId || ws.role !== 'PLAYER') throw new Error('Only host can remove bots');
+          if (room.game) throw new Error('Bots can only be removed before the game starts');
+          const botId = typeof msg.botId === 'string' ? msg.botId : '';
+          if (!room.bots.includes(botId)) throw new Error('Bot is not in this room');
+          room.bots = room.bots.filter(id => id !== botId);
+          return broadcast(room, 'ROOM_STATE');
+        }
         if (msg.type === 'START_GAME') {
           if (ws.id !== room.hostId || ws.role !== 'PLAYER') throw new Error('Only host can start');
           if (room.game) throw new Error('Game already started');
-          room.game = new GameRoom({ ...room.options, players: playerIds(room) });
+          const players = lobbyPlayerIds(room);
+          room.game = new GameRoom({ ...room.options, players, botIds: room.bots });
           room.game.start();
+          room.botDriver = new BotDriver({ room, onChange: () => broadcast(room, 'ROOM_STATE'), ...botOptions });
           return broadcast(room, 'GAME_STARTED');
         }
         if (msg.type === 'UPDATE_ROOM_OPTIONS') {
