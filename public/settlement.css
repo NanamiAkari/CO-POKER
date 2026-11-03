@@ -325,3 +325,40 @@
 .honor-score .ok { color: #b5e7c7; }
 .honor-score .bad { color: #f0b09d; }
 .honor-score small { margin-right: 3px; opacity: .7; }
+
+/* Immediate full-name tooltip for truncated honor-board and series-table
+   names. It lives outside the scroll container so it never gets clipped. */
+.honor-name-tip {
+  position: absolute;
+  z-index: 80;
+  max-width: 340px;
+  padding: 6px 10px;
+  transform: translate(-50%, -100%);
+  border: 1px solid #d0b374;
+  border-radius: 6px;
+  background: #0b1d18f5;
+  color: #f0e3c4;
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: .5px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  box-shadow: 0 8px 22px #0009;
+}
+.honor-name-tip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #d0b374;
+}
+.podium-name:focus-visible,
+.honor-name:focus-visible,
+.series-player:focus-visible {
+  outline: 1px solid #d8bd7d;
+  outline-offset: 2px;
+  border-radius: 3px;
+}

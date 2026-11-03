@@ -530,8 +530,9 @@ test('game-over settlement sorts the series table and switches to lifetime total
   assert.match(output, /第1局/);
   assert.match(output, /第5局/);
   assert.equal((output.match(/class="series-mark/g) || []).length, 15);
-  const order = [...output.matchAll(/<td class="series-player" title="([^"]+)"/g)].map(match => match[1]);
+  const order = [...output.matchAll(/<td class="series-player"[^>]*>([^<]+)<\/td>/g)].map(match => match[1]);
   assert.deepEqual(order, ['A', 'B', 'C']);
+  assert.equal((output.match(/class="series-player" tabindex="0"/g) || []).length, 3, 'truncated table names stay focusable');
   assert.match(output, /累计/);
 
   const lifetime = await renderScreen(v => {
@@ -544,8 +545,30 @@ test('game-over settlement sorts the series table and switches to lifetime total
   assert.doesNotMatch(lifetime, /第1局/);
   assert.equal((lifetime.match(/class="podium-card/g) || []).length, 3);
   assert.equal((lifetime.match(/class="honor-row/g) || []).length, 0);
-  const lifetimeOrder = [...lifetime.matchAll(/<strong class="podium-name" title="([^"]+)"/g)].map(match => match[1]);
+  const lifetimeOrder = [...lifetime.matchAll(/<strong class="podium-name"[^>]*>([^<]+)<\/strong>/g)].map(match => match[1]);
   assert.deepEqual(lifetimeOrder, ['B', 'A', 'C']);
+  assert.equal((lifetime.match(/class="podium-name" tabindex="0"/g) || []).length, 3);
+  assert.doesNotMatch(lifetime, /class="honor-name-tip"/, 'the tooltip only exists while hovering or focusing a shortened name');
+});
+
+test('honor name tooltips appear only for shortened names and follow the scaled table', async () => {
+  let view;
+  await renderScreen(v => {
+    view = v;
+    v.inRoom.value = true; v.playerId.value = 'A'; v.presentation.value = 'summary';
+    Object.assign(v.state, { phase: 'GAME_OVER', players: [{ id: 'A' }, { id: 'B' }, { id: 'C' }], seriesHistory: [{ round: 1, success: true, correctPlayerIds: ['A', 'B', 'C'] }], lifetimeStats: [{ playerId: 'A', correct: 1, wrong: 0 }, { playerId: 'B', correct: 0, wrong: 1 }, { playerId: 'C', correct: 0, wrong: 1 }], successCount: 3, failureCount: 0, result: { success: true, comparisons: [] }, finalHands: [] });
+  });
+  const canvas = { getBoundingClientRect: () => ({ left: 100, top: 50, width: 600, height: 380 }) };
+  const shortened = { scrollWidth: 220, clientWidth: 80, closest: () => canvas, getBoundingClientRect: () => ({ left: 300, top: 200, width: 40, height: 18 }) };
+  view.showHonorTip({ currentTarget: shortened }, '非常非常长的玩家名字');
+  assert.equal(view.honorTip.value.text, '非常非常长的玩家名字');
+  assert.equal(view.honorTip.value.x, 440);
+  assert.equal(view.honorTip.value.y, 292);
+  view.hideHonorTip();
+  assert.equal(view.honorTip.value, null);
+  const fitting = { scrollWidth: 80, clientWidth: 80, closest: () => canvas, getBoundingClientRect: () => ({ left: 300, top: 200, width: 40, height: 18 }) };
+  view.showHonorTip({ currentTarget: fitting }, '短名');
+  assert.equal(view.honorTip.value, null, 'names that already fit do not get a redundant tooltip');
 });
 
 test('settlement can hide the result to inspect the final table and restore it', async () => {

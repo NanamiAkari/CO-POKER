@@ -13,7 +13,7 @@
     const connected=ref(false), pending=ref(false), busy=ref(false), scale=ref(1), fullscreen=ref(false);
     const state=reactive(freshState()), presentation=ref('idle'), revealIndex=ref(0), selectionLit=ref(false), compareIndex=ref(0), verdictVisible=ref(false), summaryIndex=ref(0);
     const activeSeatAction=ref(null);
-    const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series');
+    const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series'), honorTip=ref(null);
     const notice=ref(''), noticeError=ref(false);
     const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false});
@@ -125,8 +125,23 @@
       tomato.sendTomato(id);
       closeSeatActions();
     }
-    function showFinalTable(){if(!isResult.value)return;closeComparisonDetail();presentation.value='table';}
-    function showSettlementSummary(){if(!isResult.value)return;closeComparisonDetail();presentation.value='summary';}
+    function hideHonorTip(){honorTip.value=null;}
+    // Native title tooltips are slow and easy to miss. The honor board has
+    // narrow name columns, so show an immediate, scaled tooltip for a name
+    // that is actually shortened by ellipsis. Short names stay untouched.
+    function showHonorTip(event,text){
+      const element=event?.currentTarget;
+      if(!element||!text){hideHonorTip();return;}
+      if(element.scrollWidth<=element.clientWidth+1){hideHonorTip();return;}
+      const canvas=element.closest?.('.game-canvas');
+      if(!canvas){hideHonorTip();return;}
+      const canvasRect=canvas.getBoundingClientRect();
+      const scale=canvasRect.width/1200||1;
+      const rect=element.getBoundingClientRect();
+      honorTip.value={text,x:Math.min(1030,Math.max(170,(rect.left+rect.width/2-canvasRect.left)/scale)),y:(rect.top-canvasRect.top)/scale-8};
+    }
+    function showFinalTable(){if(!isResult.value)return;hideHonorTip();closeComparisonDetail();presentation.value='table';}
+    function showSettlementSummary(){if(!isResult.value)return;hideHonorTip();closeComparisonDetail();presentation.value='summary';}
     function finalHandFor(id){return state.finalHands.find(entry=>entry.playerId===id)||null;}
     // A spectator is granted a read-only table view by the server. Their
     // player snapshots include every player's hole cards, so expose those
@@ -261,7 +276,7 @@
       }
     }
     function trapFocus(event){if(event.key==='Escape'){closeSeatActions();chat.closeChat();if(inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
-    function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);}
+    function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);hideHonorTip();}
     async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();resize();}catch{notify('当前浏览器不支持全屏',true);}}
     function copyRoomLegacy(text){
       // HTTP origins do not expose Clipboard API. Keep this path synchronous
@@ -304,6 +319,7 @@
       tomato.reset();
       tomatoSound.reset();
       closeSeatActions();
+      hideHonorTip();
       completedComparisonCount.value=0;closeComparisonDetail();
       generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
       receivedResultKey='';liveSkipState=null;retiredResultKeys.clear();for(const finish of [...comparisonWaiters])finish();
@@ -423,9 +439,11 @@
     },{immediate:true});
     watch([canSendTomato,()=>state.players.map(player=>player.id)],()=>{if(!canSendTomato.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
+    watch(seriesTableMode,hideHonorTip);
+    watch(presentation,hideHonorTip);
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
