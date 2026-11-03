@@ -510,8 +510,7 @@ test('game-over settlement sorts the series table and switches to lifetime total
     Object.assign(v.state, fixture);
   });
   assert.match(lifetime, /class="cumulative-honor"/);
-  assert.match(lifetime, /房间荣誉榜/);
-  assert.match(lifetime, /共 9 局/);
+  assert.doesNotMatch(lifetime, /房间荣誉榜|共 9 局/);
   assert.doesNotMatch(lifetime, /第1局/);
   assert.equal((lifetime.match(/class="podium-card/g) || []).length, 3);
   assert.equal((lifetime.match(/class="honor-row/g) || []).length, 0);

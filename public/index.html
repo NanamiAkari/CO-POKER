@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
-  <link rel="stylesheet" href="/settlement.css?v=20261103-honor-podium">
+  <link rel="stylesheet" href="/settlement.css?v=20261103-honor-podium-clean">
   <link rel="stylesheet" href="/hint-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/hand-highlights.css?v=0.3.3">
   <link rel="stylesheet" href="/skip-comparison.css?v=20261005-controls">
@@ -134,7 +134,7 @@
             <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
             <div v-if="state.phase==='GAME_OVER'&&seriesHistory.length" class="summary-right series-board" aria-label="本场历史结算">
               <div class="series-board-head">
-                <span class="series-board-title">{{seriesTableMode==='series'?'本场战绩':'房间荣誉榜'}}<small v-if="seriesTableMode==='lifetime'">共 {{lifetimeRoundCount}} 局</small></span>
+                <span v-if="seriesTableMode==='series'" class="series-board-title">本场战绩</span>
                 <div class="series-board-tabs" role="tablist" aria-label="战绩范围">
                   <button type="button" role="tab" :aria-selected="seriesTableMode==='series'" :class="{active:seriesTableMode==='series'}" @click="seriesTableMode='series'">本场</button>
                   <button type="button" role="tab" :aria-selected="seriesTableMode==='lifetime'" :class="{active:seriesTableMode==='lifetime'}" @click="seriesTableMode='lifetime'">累计</button>
@@ -297,6 +297,6 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261103-honor-podium"></script>
+<script src="/game-client.js?v=20261103-honor-podium-clean"></script>
 </body>
 </html>

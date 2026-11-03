@@ -75,17 +75,12 @@
   font-size: 12px;
   letter-spacing: 1px;
 }
-.series-board-title small {
-  margin-left: 7px;
-  color: #8fa28a;
-  font-size: 10px;
-  letter-spacing: 0;
-}
 .series-board-tabs {
   display: flex;
   flex: 0 0 auto;
   justify-content: flex-end;
   gap: 4px;
+  margin-left: auto;
 }
 .series-board-tabs button {
   padding: 3px 9px;
