@@ -180,6 +180,9 @@ test('bots accept social actions such as tomatoes like any other player', async 
   const created = await host.request({ type: 'CREATE_ROOM', playerId: 'host' }, 'ROOM_CREATED');
   const roomId = created.roomId;
   await host.request({ type: 'ADD_BOT', roomId }, 'ROOM_STATE');
+  const lobbyTomato = await host.request({ type: 'THROW_TOMATO', roomId, targetPlayerId: 'Robot Jack' }, 'TOMATO_THROW');
+  assert.equal(lobbyTomato.action.toPlayerId, 'Robot Jack');
+
   await host.request({ type: 'START_GAME', roomId }, 'GAME_STARTED');
 
   const tomato = await host.request({ type: 'THROW_TOMATO', roomId, targetPlayerId: 'Robot Jack' }, 'TOMATO_THROW');
