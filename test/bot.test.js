@@ -44,10 +44,10 @@ test('bot coin actions are serialized one bot at a time in seat order', () => {
   const jack = game.players.find(player => player.id === 'Robot Jack');
   const sam = game.players.find(player => player.id === 'Robot Sam');
   const timers = [];
-  let driver;
+  let driver, actionMeta;
   driver = new BotDriver({
     room,
-    onChange: () => { driver.sync(); },
+    onChange: payload => { actionMeta = payload; driver.sync(); },
     random: () => 0,
     setTimeoutFn: callback => { timers.push(callback); return timers.length; },
     clearTimeoutFn: () => {},
@@ -58,6 +58,7 @@ test('bot coin actions are serialized one bot at a time in seat order', () => {
   assert.equal(timers.length, 1, 'only one bot may be waiting to take a coin');
   timers.shift()();
   assert.notEqual(jack.currentCoin, null);
+  assert.deepEqual(actionMeta, { coinAction: { type: 'MOVE', coin: jack.currentCoin, fromPlayerId: null, toPlayerId: 'Robot Jack' } });
   assert.equal(sam.currentCoin, null, 'the second bot waits for the first action to finish');
   assert.equal(timers.length, 1);
   timers.shift()();

@@ -59,7 +59,7 @@ class BotDriver {
     random = Math.random,
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
-    coinDelayMs = 700,
+    coinDelayMs = 950,
     rematchDelayMs = 450,
     skipDelayMs = 300
   }) {
@@ -104,8 +104,9 @@ class BotDriver {
           if (this.room.game !== game || game.phase !== phase || bot.currentCoin !== null || !game.coinTable?.area.size) return;
           const coin = chooseBotCoin(game, bot, this.random);
           if (!Number.isInteger(coin)) return;
+          const fromPlayerId = game.coinTable.owners.get(coin) || null;
           game.moveCoin(coin, bot.id);
-          this.onChange();
+          this.onChange({ coinAction: { type: 'MOVE', coin, fromPlayerId, toPlayerId: bot.id } });
         });
       }
     }

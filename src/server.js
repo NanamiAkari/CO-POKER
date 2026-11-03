@@ -293,7 +293,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           const players = lobbyPlayerIds(room);
           room.game = new GameRoom({ ...room.options, players, botIds: room.bots });
           room.game.start();
-          room.botDriver = new BotDriver({ room, onChange: () => broadcast(room, 'ROOM_STATE'), ...botOptions });
+          room.botDriver = new BotDriver({ room, onChange: (payload = {}) => broadcast(room, 'ROOM_STATE', payload), ...botOptions });
           return broadcast(room, 'GAME_STARTED');
         }
         if (msg.type === 'UPDATE_ROOM_OPTIONS') {

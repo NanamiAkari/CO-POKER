@@ -379,25 +379,47 @@
     function stealCoin(coin,id){if(canAct.value)command('MOVE_COIN',{coin,fromPlayerId:id});}
     function requestComparisonSkip(){if(canSkipComparison.value)command('SKIP_COMPARISON');}
     function captureCoins(){const map=new Map();document.querySelectorAll('[data-live-coin]').forEach(el=>map.set(Number(el.dataset.liveCoin),el.getBoundingClientRect()));return map;}
+    function findCoinElement(coin){for(const el of document.querySelectorAll('[data-live-coin]'))if(Number(el.dataset.liveCoin)===coin)return el;return null;}
+    function flyCoin(coin,from,to,element,epoch){
+      if(!live(epoch)||prefs.reducedMotion||!from||!element||!to||!to.width||!from.width)return Promise.resolve();
+      if(Math.hypot(from.x-to.x,from.y-to.y)<5)return Promise.resolve();
+      const chip=document.createElement('img');chip.className='coin-flight';chip.src=Art.coinImage(coin);chip.alt='';chip.style.cssText=`left:${from.x}px;top:${from.y}px;width:${from.width}px;height:${from.height}px`;
+      document.body.appendChild(chip);activeFlights.add(chip);element.classList.add('flight-hidden');
+      const dx=to.x-from.x,dy=to.y-from.y,s=to.width/from.width;
+      const anim=chip.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${dx*.48}px,${dy*.48-35}px) scale(1.08)`,offset:.5},{transform:`translate(${dx}px,${dy}px) scale(${s})`}],{duration:900,easing:'cubic-bezier(.2,.65,.3,1)',fill:'forwards'});
+      return anim.finished.catch(()=>{}).then(()=>{chip.remove();activeFlights.delete(chip);element.classList.remove('flight-hidden');element.classList.add('land');setTimeout(()=>element.classList.remove('land'),550);});
+    }
     async function animateMoves(before,epoch){
       await nextTick();if(!live(epoch)||prefs.reducedMotion)return;
       const animations=[];
       for(const el of document.querySelectorAll('[data-live-coin]')){
         const coin=Number(el.dataset.liveCoin),from=before.get(coin),to=el.getBoundingClientRect();
-        if(!from||Math.hypot(from.x-to.x,from.y-to.y)<5)continue;
-        const chip=document.createElement('img');chip.className='coin-flight';chip.src=Art.coinImage(coin);chip.alt='';chip.style.cssText=`left:${from.x}px;top:${from.y}px;width:${from.width}px;height:${from.height}px`;
-        document.body.appendChild(chip);activeFlights.add(chip);el.classList.add('flight-hidden');
-        const dx=to.x-from.x,dy=to.y-from.y,s=to.width/from.width;
-        const anim=chip.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${dx*.48}px,${dy*.48-35}px) scale(1.08)`,offset:.5},{transform:`translate(${dx}px,${dy}px) scale(${s})`}],{duration:900,easing:'cubic-bezier(.2,.65,.3,1)',fill:'forwards'});
-        animations.push(anim.finished.catch(()=>{}).then(()=>{chip.remove();activeFlights.delete(chip);el.classList.remove('flight-hidden');el.classList.add('land');setTimeout(()=>el.classList.remove('land'),550);}));
+        animations.push(flyCoin(coin,from,to,el,epoch));
       }
       await Promise.all(animations);
+    }
+    // A normal coin move gets its own flight instead of blocking the state
+    // queue. Different coins can therefore be in the air at the same time,
+    // while the server still releases bot actions one at a time.
+    function startCoinFlight(coin,from,epoch){
+      if(!from||prefs.reducedMotion)return;
+      void nextTick().then(()=>{
+        if(!live(epoch))return;
+        const element=findCoinElement(coin);
+        if(!element)return;
+        void flyCoin(coin,from,element.getBoundingClientRect(),element,epoch);
+      }).catch(()=>{});
     }
     async function present(msg,epoch){
       if(!live(epoch))return;
       const next=msg.state,oldPhase=state.phase,stageChange=oldPhase!==next.phase;
       if(next.result&&retiredResultKeys.has(resultKey(next)))return;
       const before=captureCoins();busy.value=true;
+      // Capture the source before the snapshot changes the DOM. Stage changes
+      // still use the blocking all-coin animation below so the final coin
+      // lands before the table is replaced.
+      const movingAction=msg.coinAction&&!stageChange?msg.coinAction:null;
+      const movingFrom=movingAction?findCoinElement(movingAction.coin)?.getBoundingClientRect()||null:null;
       // The final coin must reach its player before a reset/reveal replaces the table.
       if(msg.coinAction&&stageChange&&COIN_PHASES.includes(oldPhase)){
         const action=msg.coinAction;
@@ -409,7 +431,7 @@
       Object.assign(state,incoming);applyLiveSkip();unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
       if(newHand){presentation.value='deal';await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
-      else if(msg.coinAction&&!stageChange){await animateMoves(before,epoch);tone('coin');}
+      else if(movingAction){startCoinFlight(movingAction.coin,movingFrom,epoch);tone('coin');}
       else if(stageChange&&!next.result&&COIN_PHASES.includes(next.phase)){tone('card');await sleep(prefs.reducedMotion?300:1450);}
       if(!live(epoch))return;
       if(next.result){
