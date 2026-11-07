@@ -55,6 +55,9 @@ test('actual Vue menu and settings templates render without missing bindings', a
   const settings = await renderScreen(v => { v.panel.value = 'settings'; });
   assert.match(settings, /role="dialog"/);
   assert.match(settings, /桌面音效/);
+  assert.match(settings, /总音量/);
+  assert.match(settings, /番茄投掷/);
+  assert.match(settings, /番茄命中/);
   assert.match(settings, /演出节奏/);
 });
 
@@ -144,6 +147,29 @@ test('bubble contents are plain text, history does not pop, and spectators retai
   assert.match(output,/<p class="chat-bubble-text">&lt;img src=x onerror=alert\(1\)&gt; 😀<\/p>/);
   assert.match(output,/class="chat-bubble-author">观战者 · 观战/);
   assert.doesNotMatch(output,/<img src=x/);
+});
+
+test('creating a room can choose a series length including a custom value', async () => {
+  const creation=await renderScreen(v=>{
+    v.panel.value='create';
+    assert.equal(v.roomSettings.seriesLength,3);
+    assert.equal(v.seriesLengthPreset.value,3);
+    v.applySeriesLengthPreset(1);
+    assert.equal(v.roomSettings.seriesLength,1);
+    v.applySeriesLengthPreset('custom');
+    v.customSeriesLength.value=8;
+    v.applyCustomSeriesLength();
+    assert.equal(v.roomSettings.seriesLength,8);
+  });
+  assert.match(creation,/aria-label="一局游戏长度"/);
+  assert.match(creation,/先到 3 胜 \/ 3 负/);
+  const custom=await renderScreen(v=>{
+    v.panel.value='create';
+    v.applySeriesLengthPreset('custom');
+    v.customSeriesLength.value=12;
+    v.applyCustomSeriesLength();
+  });
+  assert.match(custom,/aria-label="自定义累计场次"/);
 });
 
 test('joker rule is off by default, configurable at creation and retained in next-game settings', async () => {

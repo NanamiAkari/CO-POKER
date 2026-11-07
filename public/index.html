@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#132b26">
   <title>CO-POKER · 德扑</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b382f'/%3E%3Ctext x='32' y='48' text-anchor='middle' fill='%23d8b878' font-size='48'%3E♣%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/game.css?v=20261103-bots">
+  <link rel="stylesheet" href="/game.css?v=20261107-series-volume">
   <link rel="stylesheet" href="/seat-layout.css?v=20261031-eight-seats">
   <link rel="stylesheet" href="/selection-guard.css?v=20261031-selection-guard">
   <link rel="stylesheet" href="/rules.css?v=20261006-rules">
@@ -71,7 +71,7 @@
               <span class="seat-name"><span class="avatar">{{i%2?'♦':'♣'}}</span>{{player.id}}</span>
               <div class="seat-cards" :class="{'spectator-reveal':role==='SPECTATOR'}"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
             </div>
-            <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
+            <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct||coinLocked(player.currentCoin)" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
             <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
             <div v-if="activeSeatAction===player.id&&canSendTomato" class="seat-action-menu" role="menu" :aria-label="`${player.id} 的互动动作`" @click.stop>
               <button class="seat-action-item" type="button" role="menuitem" :disabled="!connected" :aria-label="`向 ${player.id} 扔番茄`" @click.stop="sendTomatoAndClose(player.id)"><img src="/assets/tomato.svg" alt="" aria-hidden="true"><span>扔番茄</span></button>
@@ -98,7 +98,7 @@
         </section>
         <section v-if="state.phase==='WAITING'" class="lobby-center">
           <h2>等待玩家</h2>
-          <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span><span v-if="state.options?.includeJokers">含大小王 · 54 张</span></div>
+          <div class="rule-chips"><span>{{handCount}} 张手牌</span><span>{{state.options?.handUsageRule==='all-hole'?'手牌全部使用':'任意组牌'}}</span><span>{{historyLabel}}</span><span>先到 {{seriesLength}} 胜/负</span><span v-if="state.options?.includeJokers">含大小王 · 54 张</span></div>
           <button v-if="isHost" class="gold-button" :disabled="state.players.length<2||pending||!connected" @click="command('START_GAME')">开始游戏 <span aria-hidden="true">▷</span></button>
           <div v-if="isHost" class="bot-controls">
             <button type="button" class="bot-add-button" :disabled="!canAddBot" @click="addBot">＋ 人机</button>
@@ -110,7 +110,7 @@
           <div class="deck" aria-hidden="true"><img :src="cardBack" alt=""></div>
           <div class="board" :class="{deal:presentation==='deal'}" aria-label="公共牌区"><playing-card v-for="(card,i) in communitySlots" :key="i" :card="card" :style="{'--order':i+handCount}"></playing-card></div>
           <nav class="phase-track" aria-label="牌局进度"><span v-for="(phase,i) in phases" :key="phase" class="phase-dot" :class="{active:phaseIndex===i,done:phaseIndex>i}" :title="phase" :aria-label="phase+(phaseIndex===i?'，当前阶段':'')"></span></nav>
-          <div class="coin-tray" :class="{compact:availableCoins.length>5}" data-public-anchor v-show="availableCoins.length" aria-label="公共硬币区"><button v-for="coin in availableCoins" :key="coin" class="coin-button" :data-live-coin="coin" :disabled="!canTakeCoin" :aria-label="`选择硬币 ${coin}`" @click="takeCoin(coin)"><img :src="coinImage(coin)" :alt="`硬币 ${coin}`"></button></div>
+          <div class="coin-tray" :class="{compact:availableCoins.length>5}" data-public-anchor v-show="availableCoins.length" aria-label="公共硬币区"><button v-for="coin in availableCoins" :key="coin" class="coin-button" :data-live-coin="coin" :disabled="!canTakeCoin||coinLocked(coin)" :aria-label="`选择硬币 ${coin}`" @click="takeCoin(coin)"><img :src="coinImage(coin)" :alt="`硬币 ${coin}`"></button></div>
           <div v-if="busy&&!isResult" class="phase-breath" role="status">{{presentation==='deal'?'♠  ♥  ♣  ♦':'· · ·'}}</div>
         </template>
         <div v-if="role==='PLAYER'" class="self-zone">
@@ -118,11 +118,11 @@
             <button v-if="state.ownEstimatedHand" class="hint" aria-label="查看当前最大牌型">!<span class="hint-text"><strong>{{state.ownEstimatedHand.categoryName}}</strong><span class="hint-cards"><playing-card v-for="card in state.ownEstimatedHand.cards" :key="cardText(card)" :card="card" :highlight="cardHighlight(state.ownEstimatedHand,card)"></playing-card></span></span></button>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(playerId)" :sticker="chatSticker(chatBubbleFor(playerId)?.stickerId)"></chat-bubble>
           </div>
-          <div class="own-tray"><div class="own-coin-slot" :data-owner-anchor="playerId"><button v-if="myCoin" class="coin-button" :data-live-coin="myCoin" :disabled="!canAct" :aria-label="`归还硬币 ${myCoin}`" @click="returnCoin(myCoin)"><img :src="coinImage(myCoin)" :alt="`硬币 ${myCoin}`"></button><span v-else class="coin-outline" aria-hidden="true"></span></div><div class="history-coins"><img v-for="(coin,i) in state.coinHistory" :key="i" :src="coinImage(coin)" :alt="`第${i+1}轮 硬币${coin}`"></div></div>
+          <div class="own-tray"><div class="own-coin-slot" :data-owner-anchor="playerId"><button v-if="myCoin" class="coin-button" :data-live-coin="myCoin" :disabled="!canAct||coinLocked(myCoin)" :aria-label="`归还硬币 ${myCoin}`" @click="returnCoin(myCoin)"><img :src="coinImage(myCoin)" :alt="`硬币 ${myCoin}`"></button><span v-else class="coin-outline" aria-hidden="true"></span></div><div class="history-coins"><img v-for="(coin,i) in state.coinHistory" :key="i" :src="coinImage(coin)" :alt="`第${i+1}轮 硬币${coin}`"></div></div>
         </div>
         <div v-else class="spectating">◉ 观战席</div>
         <div class="spectator-bubble-anchor" data-spectator-anchor><chat-bubble :message="chatSpectatorBubble" :sticker="chatSticker(chatSpectatorBubble?.stickerId)" :show-author="true"></chat-bubble></div>
-        <div class="score-pips" :aria-label="`累计成功${displayedSuccessCount}次，失败${displayedFailureCount}次`"><div class="score-row win"><span v-for="n in 3" :class="{lit:n<=displayedSuccessCount}">✦</span></div><div class="score-row loss"><span v-for="n in 3" :class="{lit:n<=displayedFailureCount}">×</span></div></div>
+        <div class="score-pips" :class="{compact:compactScorePips}" :aria-label="`累计成功${displayedSuccessCount}/${seriesLength}次，失败${displayedFailureCount}/${seriesLength}次`"><div class="score-row win"><span v-for="n in seriesLength" :class="{lit:n<=displayedSuccessCount}">✦</span></div><div class="score-row loss"><span v-for="n in seriesLength" :class="{lit:n<=displayedFailureCount}">×</span></div></div>
 
         <transition name="stage" mode="out-in">
           <section v-if="presentation==='select'&&revealEntry" class="stage-center" key="selection" aria-label="最大牌组选择">
@@ -135,7 +135,7 @@
             <span v-if="verdictVisible" class="compare-verdict" :class="{failed:!comparison.passed}" :aria-label="comparison.passed?'比较通过':'比较失败'">{{comparison.passed?'✓':'×'}}</span><div class="stage-pips"><span v-for="(c,i) in state.result.comparisons" :key="i" :class="{on:i<=compareIndex}"></span></div>
           </section>
           <section v-else-if="presentation==='summary'&&state.result" class="stage-center summary-center" key="summary" aria-label="本局结算">
-            <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=3?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / 3 · 失败 {{state.failureCount}} / 3</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
+            <div class="summary-left"><div class="result-seal">{{state.result.success?'✦':'×'}}</div><h3>{{state.phase==='GAME_OVER'?(state.successCount>=seriesLength?'本场胜利':'本场失败'):(state.result.success?'本局成功':'本局失败')}}</h3><p>成功 {{state.successCount}} / {{seriesLength}} · 失败 {{state.failureCount}} / {{seriesLength}}</p><div class="summary-actions"><button v-if="role==='PLAYER'" class="gold-button" :disabled="confirmed||pending||!connected" @click="command('REMATCH')">{{confirmed?'等待其他玩家…':state.phase==='GAME_OVER'?'再来一场':'下一局'}} <small>{{state.rematchConfirmed.length}}/{{state.players.length}}</small></button></div></div>
             <div v-if="state.phase==='GAME_OVER'&&seriesHistory.length" class="summary-right series-board" aria-label="本场历史结算">
               <div class="series-board-head">
                 <span v-if="seriesTableMode==='series'" class="series-board-title">本场战绩</span>
@@ -239,18 +239,33 @@
                 <div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div>
                 <label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label>
                 <label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label>
+                <label class="field">一局长度<small>先累计成功或失败该场次即结算整场</small><select :value="seriesLengthPreset" @change="applySeriesLengthPreset(($event.target.value==='custom')?'custom':Number($event.target.value))" aria-label="一局游戏长度"><option v-for="n in seriesLengthPresets" :key="n" :value="n">先到 {{n}} 胜 / {{n}} 负</option><option value="custom">自定义</option></select></label>
+                <label v-if="seriesLengthPreset==='custom'" class="field">自定义场次<input type="number" min="6" max="99" v-model.number="customSeriesLength" @change="applyCustomSeriesLength" aria-label="自定义累计场次"></label>
                 <label class="setting-row"><span>牌堆加入大小王<small>大王替代 ♥ ♦，小王替代 ♠ ♣</small></span><input type="checkbox" class="toggle" v-model="roomSettings.includeJokers" aria-label="牌堆加入大小王"></label>
               </template>
               <template v-else><label class="field">房间号<input v-model.trim="joinCode" class="room-code-input" required maxlength="6" pattern="[a-fA-F0-9]{6}" placeholder="六位房间号" autocomplete="off"></label><label class="field">入座方式<select v-model="joinRole"><option value="PLAYER">一起游戏</option><option value="SPECTATOR">旁观这场牌局</option></select></label></template>
               <button class="gold-button wide" type="submit" :disabled="pending">{{pending?'连接中…':panel==='create'?'创建':'加入'}} <span>↗</span></button><p class="fine">{{panel==='create'?'分享房间号即可邀请玩家；选币不限时。':'输入房间号和昵称即可加入。'}}</p>
             </form>
           </template>
-          <template v-else-if="panel==='settings'"><h2>游戏设置</h2><label class="setting-row"><span>桌面音效<small>硬币与翻牌音效</small></span><input type="checkbox" class="toggle" v-model="prefs.sound" @change="previewSound" aria-label="桌面音效"></label><label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label><label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label><button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button><p class="fine">设置自动保存在此浏览器。</p></template>
+          <template v-else-if="panel==='settings'">
+            <h2>游戏设置</h2>
+            <label class="setting-row"><span>桌面音效<small>关闭后所有声音静音</small></span><input type="checkbox" class="toggle" v-model="prefs.sound" @change="previewSound('coin')" aria-label="桌面音效"></label>
+            <label class="setting-row volume-row"><span>总音量<small>{{volumePercent('master')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('master')" @input="setVolume('master',$event.target.value)" @change="previewSound('coin')" :disabled="!prefs.sound" aria-label="总音量"></label>
+            <label class="setting-row volume-row"><span>桌面音效<small>硬币、翻牌与结算 {{volumePercent('table')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('table')" @input="setVolume('table',$event.target.value)" @change="previewSound('coin')" :disabled="!prefs.sound" aria-label="桌面音效音量"></label>
+            <label class="setting-row volume-row"><span>番茄投掷<small>{{volumePercent('tomatoThrow')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('tomatoThrow')" @input="setVolume('tomatoThrow',$event.target.value)" @change="previewSound('throw')" :disabled="!prefs.sound" aria-label="番茄投掷音量"></label>
+            <label class="setting-row volume-row"><span>番茄命中<small>{{volumePercent('tomatoImpact')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('tomatoImpact')" @input="setVolume('tomatoImpact',$event.target.value)" @change="previewSound('impact')" :disabled="!prefs.sound" aria-label="番茄命中音量"></label>
+            <label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label>
+            <label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label>
+            <button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button>
+            <p class="fine">设置自动保存在此浏览器。</p>
+          </template>
           <template v-else-if="panel==='room-settings'">
             <h2>下一场规则</h2><p class="fine">本大轮已结束。修改后，所有玩家需要重新确认下一场。</p>
             <div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div>
             <label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label>
             <label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label>
+            <label class="field">一局长度<small>先累计成功或失败该场次即结算整场</small><select :value="seriesLengthPreset" @change="applySeriesLengthPreset(($event.target.value==='custom')?'custom':Number($event.target.value))" aria-label="下一场游戏长度"><option v-for="n in seriesLengthPresets" :key="n" :value="n">先到 {{n}} 胜 / {{n}} 负</option><option value="custom">自定义</option></select></label>
+            <label v-if="seriesLengthPreset==='custom'" class="field">自定义场次<input type="number" min="6" max="99" v-model.number="customSeriesLength" @change="applyCustomSeriesLength" aria-label="下一场自定义累计场次"></label>
             <label class="setting-row"><span>牌堆加入大小王<small>大王替代 ♥ ♦，小王替代 ♠ ♣</small></span><input type="checkbox" class="toggle" v-model="roomSettings.includeJokers" aria-label="牌堆加入大小王"></label>
             <button class="gold-button wide" :disabled="pending||!isHost||state.phase!=='GAME_OVER'" @click="saveRoomSettings">保存下一场规则 ↗</button>
           </template>
@@ -300,8 +315,8 @@
 <script src="/hand-highlights.js?v=20261005-jokers"></script>
 <script src="/settlement-details.js?v=20261003a"></script>
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
-<script src="/tomato-sound.js?v=20261031-landlord-combo"></script>
+<script src="/tomato-sound.js?v=20261107-volume"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261103-coin-flights"></script>
+<script src="/game-client.js?v=20261107-coin-lock"></script>
 </body>
 </html>

@@ -5,7 +5,13 @@
   const Art = window.TabletopArt;
   const Highlights = window.HandHighlights;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
-  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,maxPlayers:8,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[],seriesHistory:[],lifetimeStats:[],bots:[]});
+  const SERIES_PRESETS = [1, 2, 3, 4, 5];
+  const MAX_SERIES_LENGTH = 99;
+  const clampVolume = (value, fallback = 1) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : fallback;
+  };
+  const freshState = () => ({phase:'WAITING',players:[],spectators:[],communityCards:[],ownHoleCards:[],coinHistory:[],finalHands:[],result:null,hostId:null,maxPlayers:8,options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',includeJokers:false,seriesLength:3},successCount:0,failureCount:0,rematchConfirmed:[],comparisonSkip:false,comparisonSkipVotes:[],seriesHistory:[],lifetimeStats:[],bots:[]});
   const saved = (() => { try { return JSON.parse(localStorage.getItem('poker.preferences.v2') || '{}'); } catch { return {}; } })();
   const app = createApp({setup() {
     const inRoom=ref(false), panel=ref(null), ruleStep=ref(0), roomId=ref(''), playerId=ref(''), role=ref('PLAYER');
@@ -15,13 +21,31 @@
     const activeSeatAction=ref(null);
     const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series'), honorTip=ref(null);
     const notice=ref(''), noticeError=ref(false);
-    const prefs=reactive({sound:saved.sound===true,reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,pace:saved.pace==='standard'?'standard':'relaxed'});
-    const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false});
-    let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext;
+    const prefs=reactive({
+      sound:saved.sound===true,
+      reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      pace:saved.pace==='standard'?'standard':'relaxed',
+      volumes:{
+        master:clampVolume(saved.volumes?.master,1),
+        table:clampVolume(saved.volumes?.table,1),
+        tomatoThrow:clampVolume(saved.volumes?.tomatoThrow,1),
+        tomatoImpact:clampVolume(saved.volumes?.tomatoImpact,1)
+      }
+    });
+    const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3});
+    const seriesLengthPreset=ref(SERIES_PRESETS.includes(roomSettings.seriesLength)?roomSettings.seriesLength:'custom');
+    const customSeriesLength=ref(SERIES_PRESETS.includes(roomSettings.seriesLength)?6:roomSettings.seriesLength);
+    const pendingCoins=ref(new Set());
+    let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext, coinTimers=new Map();
     let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
     let receivedResultKey='', liveSkipState=null;
     const retiredResultKeys=new Set();
-    const tomatoSound=window.TomatoSound.create({getContext:()=>audioContext,enabled:()=>prefs.sound,isVisible:()=>document.visibilityState!=='hidden'});
+    const tomatoSound=window.TomatoSound.create({
+      getContext:()=>audioContext,
+      enabled:()=>prefs.sound,
+      isVisible:()=>document.visibilityState!=='hidden',
+      volume:kind=>clampVolume(prefs.volumes.master)*clampVolume(kind==='throw'?prefs.volumes.tomatoThrow:prefs.volumes.tomatoImpact)
+    });
     const chat=window.RoomChat.create({Vue,roomId,playerId,connected,send(payload){
       if(!socket||socket.readyState!==WebSocket.OPEN)return false;
       socket.send(JSON.stringify(payload));return true;
@@ -46,10 +70,17 @@
     const emptySeatCount=computed(()=>state.phase==='WAITING'?Math.min(1,Math.max(0,maxPlayers.value-state.players.length)):0);
     const compactSeats=computed(()=>opponents.value.length+emptySeatCount.value>4);
     const bots=computed(()=>Array.isArray(state.bots)?state.bots:[]);
+    const seriesLength=computed(()=>{
+      const value=Number(state.options?.seriesLength);
+      return Number.isInteger(value)&&value>=1?value:3;
+    });
+    const compactScorePips=computed(()=>seriesLength.value>7);
     const canAddBot=computed(()=>isHost.value&&state.phase==='WAITING'&&state.players.length<maxPlayers.value&&!pending.value&&!busy.value);
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
-    const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!pending.value&&!busy.value&&COIN_PHASES.includes(state.phase));
+    // Coin flights are independent. Only a blocking table presentation
+    // (deal, round change, reveal) may freeze the whole tray.
+    const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!busy.value&&COIN_PHASES.includes(state.phase));
     const canSendTomato=computed(()=>connected.value&&!isResult.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
     const canTakeCoin=computed(()=>canAct.value&&myCoin.value===null);
     const showSkipComparison=computed(()=>role.value==='PLAYER'&&Boolean(state.result)&&['hold','select','gap','compare'].includes(presentation.value));
@@ -167,8 +198,8 @@
       {title:'游戏目标',topic:'目标',intro:'这是一款 2–8 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
         '默认使用 52 张扑克牌。房主开启“牌堆加入大小王”后为 54 张。手牌只对本人可见，公共牌所有人共用。',
         '有几名玩家，就有几枚硬币：1 号代表最强，2 号代表第二强，依此类推。观战者不占用硬币。',
-        '没有下注或筹码输赢。全体玩家共同挑战：累计成功 3 局获胜，累计失败 3 局结束，不要求连续。'
-      ],note:'一局包括四轮选币和一次最终结算；一场游戏可以包含多局。'},
+        '没有下注或筹码输赢。全体玩家共同挑战：累计成功或失败达到房间设定的场次即结束整场，不要求连续。默认各 3 局。'
+      ],note:'一局包括四轮选币和一次最终结算；一场游戏可以包含多局。创建房间时可选择 1–5 场或自定义场次。'},
       {title:'一局如何进行',topic:'流程',intro:'开局先发手牌，再摆出五张盖住的公共牌。公共牌按 3、1、1 张翻开，共有四轮选币。',table:{head:['阶段','可见牌','本轮操作'],rows:[
         ['发牌','每人 2 或 3 张手牌；公共牌全盖住','判断牌力，选硬币'],
         ['翻牌','翻开前 3 张公共牌','重新选硬币'],
@@ -202,12 +233,12 @@
         '平局通过；不要求每个人都严格大于前一位。N 名玩家共比较 N−1 次，即使前面失败也会比完全部相邻组合。'
       ],note:'一局只计一次成功或失败，不会因多处顺序错误而扣多次。揭示中会高亮系统选中的五张牌，再展示比较结果。'},
       {title:'下一局与房间设置',topic:'房间',intro:'普通结算后，全体玩家选择“下一局”才重新发牌，成功和失败次数继续累计。',items:[
-        '累计三胜或三负后，整场结束。全员选择“再来一场”会将成功、失败计数归零。观战者不参与确认。',
+        '累计成功或失败达到房间设定的场次后，整场结束。全员选择“再来一场”会将成功、失败计数归零。观战者不参与确认。',
         '历史硬币显示每个已完成轮次锁定的选择。房主可设为所有人可见、仅本人可见、全部隐藏；历史选择不能修改，也不计入结算。',
         '观战者只能查看公共信息；在最终揭示前不能看到玩家手牌，也不能拿取或抢夺硬币。',
         '房间聊天对同桌所有玩家和观战者公开。可发送文字和 emoji；Enter 发送，Shift+Enter 换行。',
         '当前版本中，开局后的玩家主动离开或掉线会结束房间，其他人返回主菜单。观战者离开不影响牌局。'
-      ],note:'个人设置里的音效、减少动态效果和演出速度只影响自己的观看体验，不改变游戏规则。'}
+      ],note:'个人设置里的音效开关、各类音量、减少动态效果和演出速度只影响自己的观看体验，不改变游戏规则。'}
     ];
     const cardKey=c=>c.joker?`joker-${c.joker}`:`${c.rank}-${c.suit}`;
     const isChosen=(entry,card)=>entry.hand.cards.some(c=>cardKey(c)===cardKey(card));
@@ -219,6 +250,64 @@
     const live=epoch=>epoch===generation && inRoom.value;
     function notify(text,error=false){clearTimeout(noticeTimer);notice.value=text;noticeError.value=error;noticeTimer=setTimeout(()=>notice.value='',5000);}
     function unlock(){pending.value=false;pendingCommand=null;clearTimeout(pendingTimer);}
+    function coinLocked(coin){return pendingCoins.value.has(Number(coin));}
+    function lockCoin(coin){
+      const next=new Set(pendingCoins.value);
+      next.add(Number(coin));
+      pendingCoins.value=next;
+    }
+    function unlockCoin(coin){
+      const next=new Set(pendingCoins.value);
+      next.delete(Number(coin));
+      pendingCoins.value=next;
+      const timer=coinTimers.get(Number(coin));
+      if(timer){clearTimeout(timer);coinTimers.delete(Number(coin));}
+    }
+    function clearPendingCoins(){
+      for(const timer of coinTimers.values())clearTimeout(timer);
+      coinTimers.clear();
+      pendingCoins.value=new Set();
+    }
+    function syncRoomSettingsFromState(){
+      const options=state.options||{};
+      Object.assign(roomSettings,{
+        handCardCount:options.handCardCount ?? 2,
+        handUsageRule:options.handUsageRule ?? 'any',
+        historyVisibility:options.historyVisibility ?? 'all',
+        spectatorSlots:options.spectatorSlots ?? 2,
+        includeJokers:options.includeJokers === true,
+        seriesLength:Number.isInteger(options.seriesLength)?options.seriesLength:3
+      });
+      syncSeriesLengthControls();
+    }
+    function syncSeriesLengthControls(){
+      const value=Number(roomSettings.seriesLength);
+      if(SERIES_PRESETS.includes(value)){
+        seriesLengthPreset.value=value;
+        if(!Number.isInteger(customSeriesLength.value)||customSeriesLength.value<6)customSeriesLength.value=6;
+      } else {
+        seriesLengthPreset.value='custom';
+        customSeriesLength.value=Number.isInteger(value)?value:6;
+      }
+    }
+    function applySeriesLengthPreset(value){
+      seriesLengthPreset.value=value;
+      if(value==='custom'){
+        const custom=Number(customSeriesLength.value);
+        roomSettings.seriesLength=Number.isInteger(custom)?Math.min(MAX_SERIES_LENGTH,Math.max(6,custom)):6;
+        customSeriesLength.value=roomSettings.seriesLength;
+      } else {
+        roomSettings.seriesLength=Number(value);
+      }
+    }
+    function applyCustomSeriesLength(){
+      const custom=Number.parseInt(String(customSeriesLength.value),10);
+      const next=Number.isInteger(custom)?Math.min(MAX_SERIES_LENGTH,Math.max(6,custom)):6;
+      customSeriesLength.value=next;
+      if(seriesLengthPreset.value==='custom')roomSettings.seriesLength=next;
+    }
+    function volumePercent(key){return Math.round(clampVolume(prefs.volumes[key])*100);}
+    function setVolume(key,value){prefs.volumes[key]=clampVolume(Number(value)/100,0);}
     const resultKey=snapshot=>snapshot.result?JSON.stringify([snapshot.roomId||roomId.value,snapshot.successCount,snapshot.failureCount,snapshot.finalHands,snapshot.result]):'';
     function applyLiveSkip(){
       if(!liveSkipState||liveSkipState.key!==resultKey(state))return;
@@ -265,14 +354,25 @@
         const t=audioContext.currentTime, oscillator=audioContext.createOscillator(), gain=audioContext.createGain();
         oscillator.type=kind==='card'?'sine':'triangle';oscillator.frequency.setValueAtTime(kind==='coin'?900:kind==='win'?660:350,t);
         oscillator.frequency.exponentialRampToValueAtTime(kind==='win'?880:240,t+.18);
-        gain.gain.setValueAtTime(.035,t);gain.gain.exponentialRampToValueAtTime(.001,t+.24);
+        const peak=.035*clampVolume(prefs.volumes.master)*clampVolume(prefs.volumes.table);
+        if(peak<=0)return;
+        gain.gain.setValueAtTime(peak,t);gain.gain.exponentialRampToValueAtTime(.001,t+.24);
         oscillator.connect(gain).connect(audioContext.destination);oscillator.start(t);oscillator.stop(t+.25);
       } catch { /* Unsupported audio must never block game input. */ }
     }
-    function previewSound(){tone('coin');}
-    function openPanel(which){closeSeatActions();chat.closeChat();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
-    function prepareRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;Object.assign(roomSettings,state.options||{});openPanel('room-settings');}
-    function saveRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;command('UPDATE_ROOM_OPTIONS',{options:{...roomSettings}});panel.value=null;}
+    function previewSound(kind='coin'){
+      if(kind==='throw'){primeTomatoSound();tomatoSound.playThrow();return;}
+      if(kind==='impact'){primeTomatoSound();tomatoSound.playImpact();return;}
+      tone(kind);
+    }
+    function openPanel(which){closeSeatActions();chat.closeChat();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;if(which==='create')syncSeriesLengthControls();nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
+    function prepareRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;syncRoomSettingsFromState();openPanel('room-settings');}
+    function saveRoomSettings(){
+      if(!isHost.value||state.phase!=='GAME_OVER')return;
+      applyCustomSeriesLength();
+      command('UPDATE_ROOM_OPTIONS',{options:{...roomSettings,seriesLength:roomSettings.seriesLength}});
+      panel.value=null;
+    }
     function closePanel(){if(pending.value&&!inRoom.value)return;panel.value=null;nextTick(()=>focusBeforePanel?.focus?.());}
     function goRulePage(index){
       ruleStep.value=Math.max(0,Math.min(rulePages.length-1,index));
@@ -284,7 +384,7 @@
         event.preventDefault();goRulePage(ruleStep.value+(['ArrowLeft','ArrowUp','PageUp'].includes(event.key)?-1:1));
       }
     }
-    function trapFocus(event){if(event.key==='Escape'){closeSeatActions();chat.closeChat();if(inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
+    function trapFocus(event){if(event.key==='Escape'){closeSeatActions();chat.closeChat();if(inspectedComparison.value){event.preventDefault();closeComparisonDetail();return;}}if(!panel.value||event.key!=='Tab')return;const elements=[...document.querySelectorAll('.modal button:not(:disabled),.modal input,.modal select,.modal textarea')];const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
     function resize(){scale.value=Math.min((window.innerWidth-12)/1200,(window.innerHeight-12)/760);fullscreen.value=Boolean(document.fullscreenElement);hideHonorTip();}
     async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();resize();}catch{notify('当前浏览器不支持全屏',true);}}
     function copyRoomLegacy(text){
@@ -330,15 +430,26 @@
       closeSeatActions();
       hideHonorTip();
       completedComparisonCount.value=0;closeComparisonDetail();
-      generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
+      generation++;activeFlights.forEach(el=>el.remove());activeFlights.clear();unlock();clearPendingCoins();busy.value=false;inRoom.value=false;panel.value=null;presentation.value='idle';lastResultKey='';queue=Promise.resolve();Object.assign(state,freshState());roomId.value='';
       receivedResultKey='';liveSkipState=null;retiredResultKeys.clear();for(const finish of [...comparisonWaiters])finish();
       if(socket){socket.onclose=null;socket.close();socket=null;}connected.value=false;
       if(text)notify(text);
     }
     function command(type,extra={}) {
-      if(pending.value)return;
+      const coin=Number(extra.coin);
+      const coinMove=['MOVE_COIN','RETURN_COIN'].includes(type)&&Number.isInteger(coin);
+      if(coinMove){
+        if(!canAct.value||coinLocked(coin)||pendingCoins.value.size)return;
+        if(type==='MOVE_COIN'&&!extra.fromPlayerId&&myCoin.value!==null)return;
+      } else if(pending.value)return;
       if(!socket||socket.readyState!==WebSocket.OPEN){notify('连接已断开，请返回主菜单重新入座',true);return;}
-      pending.value=true;pendingCommand=type;pendingTimer=setTimeout(()=>{unlock();notify('操作等待超时，请检查连接',true);},8000);
+      if(coinMove){
+        lockCoin(coin);
+        const timer=setTimeout(()=>{unlockCoin(coin);notify('操作等待超时，请检查连接',true);},8000);
+        coinTimers.set(coin,timer);
+      } else {
+        pending.value=true;pendingCommand=type;pendingTimer=setTimeout(()=>{unlock();notify('操作等待超时，请检查连接',true);},8000);
+      }
       socket.send(JSON.stringify({type,roomId:roomId.value,...extra}));
     }
     function connectAndSend(payload){
@@ -355,28 +466,28 @@
         if(msg.type==='CHAT_MESSAGE'||msg.type==='CHAT_ERROR'){chat.handleChatMessage(msg);return;}
         if(msg.type==='TOMATO_THROW'){tomato.handleTomatoMessage(msg);return;}
         if(msg.type==='TOMATO_ERROR'){notify(msg.message||'番茄动作未发送',true);return;}
-        if(msg.type==='ERROR'){unlock();notify(translateError(msg.message),true);return;}
+        if(msg.type==='ERROR'){unlock();clearPendingCoins();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
         if(msg.state){
           // A vote is live room metadata, not another queued animation step.
           // Update its count immediately even while playReveal is awaiting.
           if(!receiveSkipState(msg.state))return;
-          if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;chat.handleChatMessage(msg);const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
+          if(!inRoom.value){inRoom.value=true;panel.value=null;}roomId.value=msg.state.roomId || msg.roomId;chat.handleChatMessage(msg);const epoch=generation;queue=queue.then(()=>present(msg,epoch)).catch(error=>{busy.value=false;unlock();clearPendingCoins();notify('牌桌更新遇到问题，请重新入座',true);console.error(error);});
         }
       };
       ws.onerror=()=>{unlock();notify('暂时连接不上牌桌，请稍后重试',true);};
       ws.onclose=()=>{if(serial!==socketSerial)return;connected.value=false;unlock();if(inRoom.value)notify('连接已断开，可从右上角返回主菜单',true);};
     }
     function translateError(text){return ({'Room not found':'没有找到这个房间，请核对房间号','Game already started':'这桌已开局，可以选择观战','Spectator positions are full':'观战席已满','Player positions are full':'这桌已经坐满了，可以选择观战','Player already owns a coin':'先归还自己的硬币，再取公共硬币','Only host can start':'等待房主开始','At least two players are required':'还需要一位朋友入座','Player name is already in use':'这个昵称已被使用，请换一个','Coin selection is closed':'这一轮已经结束，请等待下一阶段','Invalid source player':'这枚硬币刚被拿走，请重新选择'})[text] || (/[\u4e00-\u9fff]/.test(text)?text:'操作未完成，请检查当前牌局状态。');}
-    function createRoom(){tone('card');connectAndSend({type:'CREATE_ROOM',options:{...roomSettings}});}
+    function createRoom(){applyCustomSeriesLength();tone('card');connectAndSend({type:'CREATE_ROOM',options:{...roomSettings}});}
     function joinRoom(){const code=joinCode.value.trim().toUpperCase();if(!/^[A-F0-9]{6}$/.test(code)){notify('请输入六位房间号',true);return;}tone('card');connectAndSend({type:'JOIN_ROOM',roomId:code,role:joinRole.value});}
     function requestLeave(){openPanel('leave');}
     function addBot(){if(canAddBot.value)command('ADD_BOT');}
     function removeBot(botId){if(isHost.value&&state.phase==='WAITING')command('REMOVE_BOT',{botId});}
     function leaveRoom(){if(!connected.value){resetRoom();return;}command('LEAVE_ROOM');}
-    function takeCoin(coin){if(canTakeCoin.value)command('MOVE_COIN',{coin});}
-    function returnCoin(coin){if(canAct.value)command('RETURN_COIN',{coin});}
-    function stealCoin(coin,id){if(canAct.value)command('MOVE_COIN',{coin,fromPlayerId:id});}
+    function takeCoin(coin){if(canTakeCoin.value&&!coinLocked(coin))command('MOVE_COIN',{coin});}
+    function returnCoin(coin){if(canAct.value&&!coinLocked(coin))command('RETURN_COIN',{coin});}
+    function stealCoin(coin,id){if(canAct.value&&!coinLocked(coin))command('MOVE_COIN',{coin,fromPlayerId:id});}
     function requestComparisonSkip(){if(canSkipComparison.value)command('SKIP_COMPARISON');}
     function captureCoins(){const map=new Map();document.querySelectorAll('[data-live-coin]').forEach(el=>map.set(Number(el.dataset.liveCoin),el.getBoundingClientRect()));return map;}
     function findCoinElement(coin){for(const el of document.querySelectorAll('[data-live-coin]'))if(Number(el.dataset.liveCoin)===coin)return el;return null;}
@@ -414,12 +525,14 @@
       if(!live(epoch))return;
       const next=msg.state,oldPhase=state.phase,stageChange=oldPhase!==next.phase;
       if(next.result&&retiredResultKeys.has(resultKey(next)))return;
-      const before=captureCoins();busy.value=true;
+      const before=captureCoins();
       // Capture the source before the snapshot changes the DOM. Stage changes
       // still use the blocking all-coin animation below so the final coin
       // lands before the table is replaced.
       const movingAction=msg.coinAction&&!stageChange?msg.coinAction:null;
       const movingFrom=movingAction?findCoinElement(movingAction.coin)?.getBoundingClientRect()||null:null;
+      const tableBusy=Boolean(stageChange||next.result);
+      if(tableBusy)busy.value=true;
       // The final coin must reach its player before a reset/reveal replaces the table.
       if(msg.coinAction&&stageChange&&COIN_PHASES.includes(oldPhase)){
         const action=msg.coinAction;
@@ -428,7 +541,10 @@
       }
       const newHand=next.phase==='ROUND_1_COINS'&&oldPhase!==next.phase;
       const incoming=liveSkipState?.key===resultKey(next)?{...next,comparisonSkip:liveSkipState.completed,comparisonSkipVotes:[...liveSkipState.votes]}:next;
-      Object.assign(state,incoming);applyLiveSkip();unlock();
+      Object.assign(state,incoming);applyLiveSkip();
+      if(msg.coinAction?.coin!=null)unlockCoin(msg.coinAction.coin);
+      if(stageChange||next.result)clearPendingCoins();
+      if(!['MOVE_COIN','RETURN_COIN'].includes(pendingCommand))unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
       if(newHand){presentation.value='deal';await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
       else if(movingAction){startCoinFlight(movingAction.coin,movingFrom,epoch);tone('coin');}
@@ -438,7 +554,7 @@
         const key=resultKey(next);
         if(key!==lastResultKey){lastResultKey=key;await playReveal(epoch);}
       } else presentation.value='idle';
-      if(live(epoch))busy.value=false;
+      if(live(epoch)&&tableBusy)busy.value=false;
     }
     function finishReveal(){
       completedComparisonCount.value=state.result?.comparisons.length || 0;
@@ -481,9 +597,10 @@
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
     watch(seriesTableMode,hideHonorTip);
     watch(presentation,hideHonorTip);
+    watch(()=>state.options,()=>{if(panel.value==='room-settings'||!inRoom.value)syncRoomSettingsFromState();},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

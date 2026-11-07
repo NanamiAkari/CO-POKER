@@ -75,11 +75,11 @@ test('broadcasts coin movement metadata for client flight animations', async () 
 
 test('validates room options and publishes authoritative menu state', async t => {
   const f = await fixture(t); const host = await f.connect();
-  for (const options of [{handCardCount:4}, {handCardCount:'3'}, {handUsageRule:'bad'}, {historyVisibility:'bad'}, {spectatorSlots:-1}, {spectatorSlots:9}, {spectatorSlots:0.5}, {includeJokers:null}, {includeJokers:'true'}, {includeJokers:1}, {players:['injected']}, null]) {
+  for (const options of [{handCardCount:4}, {handCardCount:'3'}, {handUsageRule:'bad'}, {historyVisibility:'bad'}, {spectatorSlots:-1}, {spectatorSlots:9}, {spectatorSlots:0.5}, {includeJokers:null}, {includeJokers:'true'}, {includeJokers:1}, {seriesLength:0}, {seriesLength:100}, {seriesLength:1.5}, {players:['injected']}, null]) {
     assert.equal((await host.request({type:'CREATE_ROOM', playerId:'a', options}, 'ERROR')).type, 'ERROR');
     assert.equal(f.server.manager.rooms.size, 0);
   }
-  const options = {handCardCount:3, handUsageRule:'all-hole', historyVisibility:'self', spectatorSlots:8};
+  const options = {handCardCount:3, handUsageRule:'all-hole', historyVisibility:'self', spectatorSlots:8, seriesLength:5};
   const result = await host.request({type:'CREATE_ROOM', playerId:'a', options}, 'ROOM_CREATED');
   assert.deepEqual(result.state.options, { ...options, includeJokers: false });
   assert.equal(result.state.hostId, 'a');
@@ -220,7 +220,7 @@ test('only the host can update validated room options after GAME_OVER', async t 
   assert.match(denied.message, /Only host/);
   const updated = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',spectatorSlots:4}}, 'ROOM_OPTIONS_UPDATED');
   await r.guest.next('ROOM_OPTIONS_UPDATED');
-  assert.deepEqual(updated.state.options, {handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',includeJokers:false,spectatorSlots:4});
+  assert.deepEqual(updated.state.options, {handCardCount:3,handUsageRule:'all-hole',historyVisibility:'self',includeJokers:false,spectatorSlots:4,seriesLength:3});
   assert.equal(updated.state.successCount, 0); assert.equal(updated.state.failureCount, 0);
   assert.deepEqual(updated.state.rematchConfirmed, []);
   assert.equal(f.server.manager.get(r.roomId).game.handCardCount, 3);
@@ -228,7 +228,7 @@ test('only the host can update validated room options after GAME_OVER', async t 
 
 test('joker rules, private deals, settlement, and next-game changes synchronize to players and spectators', async t => {
   const f = await fixture(t);
-  const options = { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: true, spectatorSlots: 1 };
+  const options = { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: true, spectatorSlots: 1, seriesLength: 3 };
   const host = await f.connect();
   const created = await host.request({ type: 'CREATE_ROOM', playerId: 'a', options }, 'ROOM_CREATED');
   assert.deepEqual(created.state.options, options);

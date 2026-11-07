@@ -3,13 +3,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
-const { GameRoom, PHASES, MAX_PLAYERS } = require('./game');
+const { GameRoom, PHASES, MAX_PLAYERS, DEFAULT_SERIES_LENGTH, normalizeSeriesLength } = require('./game');
 const { RoomChat, ChatError } = require('./chat');
 const { BOT_NAMES, BotDriver } = require('./bot');
 
 function validateOptions(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid room options');
-  const options = { handCardCount: 2, handUsageRule: 'any', historyVisibility: 'all', includeJokers: false, spectatorSlots: 0 };
+  const options = { handCardCount: 2, handUsageRule: 'any', historyVisibility: 'all', includeJokers: false, spectatorSlots: 0, seriesLength: DEFAULT_SERIES_LENGTH };
   for (const key of Object.keys(input)) {
     if (!Object.prototype.hasOwnProperty.call(options, key)) throw new Error(`Unknown room option: ${key}`);
     options[key] = input[key];
@@ -19,6 +19,7 @@ function validateOptions(input = {}) {
   if (!['all', 'self', 'none'].includes(options.historyVisibility)) throw new Error('Invalid historyVisibility');
   if (typeof options.includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
   if (!Number.isInteger(options.spectatorSlots) || options.spectatorSlots < 0 || options.spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
+  options.seriesLength = normalizeSeriesLength(options.seriesLength);
   return options;
 }
 

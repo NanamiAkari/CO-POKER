@@ -1,6 +1,17 @@
 const { createDeck, shuffle, findBestHand, compareHands, CoinTable } = require('./poker');
 
 const MAX_PLAYERS = 8;
+const MIN_SERIES_LENGTH = 1;
+const MAX_SERIES_LENGTH = 99;
+const DEFAULT_SERIES_LENGTH = 3;
+
+function normalizeSeriesLength(value, fallback = DEFAULT_SERIES_LENGTH) {
+  const seriesLength = value === undefined ? fallback : value;
+  if (!Number.isInteger(seriesLength) || seriesLength < MIN_SERIES_LENGTH || seriesLength > MAX_SERIES_LENGTH) {
+    throw new Error(`seriesLength must be an integer from ${MIN_SERIES_LENGTH} to ${MAX_SERIES_LENGTH}`);
+  }
+  return seriesLength;
+}
 
 const PHASES = Object.freeze({
   WAITING: 'WAITING',
@@ -14,7 +25,7 @@ const PHASES = Object.freeze({
 });
 
 class GameRoom {
-  constructor({ players, botIds = [], handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
+  constructor({ players, botIds = [], handCardCount = 2, handUsageRule = 'any', historyVisibility = 'all', includeJokers = false, seriesLength = DEFAULT_SERIES_LENGTH, turnTimerEnabled = false, turnTimerSeconds = 0, spectatorSlots = 0, random = Math.random } = {}) {
     if (!players || players.length < 2) throw new Error('At least two players are required');
     if (players.length > MAX_PLAYERS) throw new Error(`At most ${MAX_PLAYERS} players are allowed`);
     if (new Set(players).size !== players.length) throw new Error('Player names must be unique');
@@ -23,6 +34,7 @@ class GameRoom {
     if (!['all', 'self', 'none'].includes(historyVisibility)) throw new Error('Invalid historyVisibility');
     if (typeof includeJokers !== 'boolean') throw new Error('includeJokers must be a boolean');
     if (!Number.isInteger(spectatorSlots) || spectatorSlots < 0 || spectatorSlots > 8) throw new Error('spectatorSlots must be between 0 and 8');
+    this.seriesLength = normalizeSeriesLength(seriesLength);
     // isBot is server-only. Player snapshots are projected by id below and
     // must never expose a human/bot distinction to other clients.
     this.botIds = new Set(Array.isArray(botIds) ? botIds.filter(id => players.includes(id)) : []);
@@ -84,14 +96,15 @@ class GameRoom {
   updateOptions(options = {}) {
     if (this.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
     if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid room options');
-    const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'includeJokers', 'spectatorSlots']);
+    const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'includeJokers', 'spectatorSlots', 'seriesLength']);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unknown room option: ${key}`);
     const next = {
       handCardCount: options.handCardCount ?? this.handCardCount,
       handUsageRule: options.handUsageRule ?? this.handUsageRule,
       historyVisibility: options.historyVisibility ?? this.historyVisibility,
       includeJokers: Object.prototype.hasOwnProperty.call(options, 'includeJokers') ? options.includeJokers : this.includeJokers,
-      spectatorSlots: options.spectatorSlots ?? this.spectatorSlots
+      spectatorSlots: options.spectatorSlots ?? this.spectatorSlots,
+      seriesLength: Object.prototype.hasOwnProperty.call(options, 'seriesLength') ? normalizeSeriesLength(options.seriesLength) : this.seriesLength
     };
     if (![2, 3].includes(next.handCardCount)) throw new Error('handCardCount must be 2 or 3');
     if (!['any', 'all-hole'].includes(next.handUsageRule)) throw new Error('Invalid handUsageRule');
@@ -103,6 +116,7 @@ class GameRoom {
     this.historyVisibility = next.historyVisibility;
     this.includeJokers = next.includeJokers;
     this.spectatorSlots = next.spectatorSlots;
+    this.seriesLength = next.seriesLength;
     this.rematchConfirmed.clear();
     this.comparisonSkipVotes.clear();
     this.comparisonSkip = false;
@@ -212,7 +226,7 @@ class GameRoom {
     }
     this.seriesHistory.push({ round: this.seriesHistory.length + 1, success, playerScores });
     this.lastResult = { success, comparisons };
-    this.phase = (this.successCount >= 3 || this.failureCount >= 3) ? PHASES.GAME_OVER : PHASES.SETTLEMENT;
+    this.phase = (this.successCount >= this.seriesLength || this.failureCount >= this.seriesLength) ? PHASES.GAME_OVER : PHASES.SETTLEMENT;
     this.record('GAME_SETTLED', this.lastResult);
     return this.lastResult;
   }
@@ -277,4 +291,4 @@ class GameRoom {
   }
 }
 
-module.exports = { GameRoom, PHASES, MAX_PLAYERS };
+module.exports = { GameRoom, PHASES, MAX_PLAYERS, MIN_SERIES_LENGTH, MAX_SERIES_LENGTH, DEFAULT_SERIES_LENGTH, normalizeSeriesLength };

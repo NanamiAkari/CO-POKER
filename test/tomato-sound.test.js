@@ -34,7 +34,7 @@ function fakeContext({ state = 'running', resume = null, decodeError = null } = 
         onended: null,
         started: 0,
         stopped: 0,
-        connect() {},
+        connect(node) { this.connectedTo = node; },
         disconnect() { this.disconnected = true; },
         start() { this.started += 1; sources.push(this); },
         stop() { this.stopped += 1; },
@@ -123,6 +123,25 @@ test('the first action warms only the requested asset and later voices are cappe
   context.sources[1].onended();
   assert.equal(sound.activeCount, 5);
   assert.equal(sound.playThrow(), true);
+});
+
+test('volume scales throw and impact independently', async () => {
+  const context = fakeContext();
+  const volumes = { throw: 0.4, impact: 0.8 };
+  const sound = TomatoSound.create({
+    getContext: () => context,
+    fetch: fakeFetch(),
+    volume: kind => volumes[kind]
+  });
+  assert.equal(await sound.preload(), true);
+  assert.equal(sound.playThrow(), true);
+  assert.equal(sound.playImpact(), true);
+  const throwGain = context.sources[0].connectedTo;
+  const impactGain = context.sources[1].connectedTo;
+  assert.ok(throwGain);
+  assert.ok(impactGain);
+  assert.equal(Number(throwGain.gain.value.toFixed(3)), Number((0.5 * 0.4).toFixed(3)));
+  assert.equal(Number(impactGain.gain.value.toFixed(3)), Number((0.55 * 0.8).toFixed(3)));
 });
 
 test('reset stops and clears both voice kinds', async () => {

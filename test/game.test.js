@@ -191,13 +191,31 @@ test('updates room options only after GAME_OVER and clears rematch votes', () =>
   room.phase = PHASES.GAME_OVER;
   room.rematchConfirmed.add('a');
   const updated = room.updateOptions({ handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });
-  assert.deepEqual(updated, { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: false, spectatorSlots: 5 });
+  assert.deepEqual(updated, { handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', includeJokers: false, spectatorSlots: 5, seriesLength: 3 });
   assert.equal(room.handCardCount, 3);
   assert.equal(room.handUsageRule, 'all-hole');
   assert.equal(room.historyVisibility, 'self');
   assert.equal(room.spectatorSlots, 5);
   assert.deepEqual([...room.rematchConfirmed], []);
   assert.ok(room.getReplay().some(event => event.type === 'ROOM_OPTIONS_UPDATED'));
+});
+
+test('a custom series length ends the game at that many wins or losses', () => {
+  const room = new GameRoom({ players: ['a', 'b'], seriesLength: 1 });
+  room.phase = PHASES.FINAL_REVEAL;
+  room.players[0].currentCoin = 2;
+  room.players[1].currentCoin = 1;
+  room.players[0].finalHand = { category: 0, tiebreak: [14, 13, 11, 9, 7] };
+  room.players[1].finalHand = { category: 1, tiebreak: [2, 14, 13, 11, 9] };
+  room.settle();
+  assert.equal(room.successCount, 1);
+  assert.equal(room.phase, PHASES.GAME_OVER);
+  room.phase = PHASES.GAME_OVER;
+  const updated = room.updateOptions({ seriesLength: 5 });
+  assert.equal(updated.seriesLength, 5);
+  assert.throws(() => room.updateOptions({ seriesLength: 0 }), /seriesLength/);
+  assert.throws(() => room.updateOptions({ seriesLength: 100 }), /seriesLength/);
+  assert.equal(room.seriesLength, 5);
 });
 
 test('rejects invalid room option updates without mutating game settings', () => {

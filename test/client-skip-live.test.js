@@ -47,7 +47,7 @@ async function client() {
     localStorage:{getItem:()=>null,setItem(){}},setTimeout,clearTimeout,
     console:{error:error=>errors.push(error)}
   });
-  const receive = snapshot => socket.onmessage({data:JSON.stringify({type:'ROOM_STATE',state:snapshot})});
+  const receive = (snapshot, extra = {}) => socket.onmessage({data:JSON.stringify({type:'ROOM_STATE',state:snapshot,...extra})});
   async function advance(ms) {
     const target = now+ms;
     for(let guard=0;guard<1000;guard++) {
@@ -157,4 +157,31 @@ test('reviewing the final table preserves the visible failure total', async () =
   c.view.showFinalTable();
   assert.equal(c.view.displayedSuccessCount.value,1);assert.equal(c.view.displayedFailureCount.value,2);
   c.view.showSettlementSummary();assert.equal(c.view.displayedFailureCount.value,2);
+});
+
+test('clicking one coin locks only that coin and releases it on the server confirmation', async () => {
+  const c=await client();
+  Object.assign(c.view.state,{phase:'ROUND_1_COINS',players:[{id:'A',currentCoin:null},{id:'B',currentCoin:null}]});
+  c.view.inRoom.value=true;c.view.connected.value=true;
+  assert.equal(c.view.canTakeCoin.value,true);
+  c.view.takeCoin(1);
+  assert.equal(c.view.coinLocked(1),true);
+  assert.equal(c.view.coinLocked(2),false,'other coins stay clickable while coin 1 awaits confirmation');
+  assert.equal(c.view.pending.value,false,'coin moves no longer hold the global pending lock');
+  assert.equal(c.view.busy.value,false,'a normal coin flight does not freeze the table');
+  assert.equal(c.view.canAct.value,true);
+  const sentBefore=c.sent.length;
+  c.view.takeCoin(2);
+  assert.equal(c.sent.length,sentBefore,'one player cannot queue a second move until the first is confirmed');
+  const round={roomId:'ABC123',phase:'ROUND_1_COINS',players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}],options:{seriesLength:3}};
+  c.receive(round,{coinAction:{type:'MOVE',coin:1,fromPlayerId:null,toPlayerId:'A'}});
+  await flush();
+  assert.equal(c.view.coinLocked(1),false,'the server confirmation releases coin 1');
+  assert.equal(c.view.myCoin.value,1);
+  c.view.takeCoin(2);
+  assert.equal(c.sent.length,sentBefore,'already holding a coin blocks taking another public coin');
+  c.view.returnCoin(1);
+  assert.equal(c.view.coinLocked(1),true,'returning locks only the returned coin');
+  assert.equal(c.sent.length,sentBefore+1);
+  assert.deepEqual(c.errors,[]);
 });

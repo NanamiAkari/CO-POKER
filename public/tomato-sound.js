@@ -137,6 +137,19 @@
       return count;
     }
 
+    function volumeFor(kind, fallback) {
+      const source = options.volume;
+      if (typeof source === 'function') {
+        try {
+          const value = Number(source(kind));
+          return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+        } catch (_) {
+          return fallback;
+        }
+      }
+      const value = Number(source);
+      return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+    }
     function play(kind, gainValue) {
       // Do these checks before asking for a context; some AudioContext
       // factories are expensive and must not run while sound is disabled.
@@ -158,7 +171,7 @@
         source.buffer = audioBuffer;
         if (typeof audioContext.createGain === 'function') {
           gain = audioContext.createGain();
-          if (gain.gain) gain.gain.value = gainValue;
+          if (gain.gain) gain.gain.value = gainValue * volumeFor(kind, 1);
           source.connect(gain);
           if (audioContext.destination && typeof gain.connect === 'function') gain.connect(audioContext.destination);
         } else if (audioContext.destination && typeof source.connect === 'function') {
