@@ -268,11 +268,15 @@ test('sticker catalog accepts only existing local image files and messages conta
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'copoker-chat-catalog-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   fs.mkdirSync(path.join(temp, 'stickers'));
+  fs.mkdirSync(path.join(temp, 'stickers', 'default'));
   fs.writeFileSync(path.join(temp, 'stickers', 'wave.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  fs.writeFileSync(path.join(temp, 'stickers', 'default', 'nested.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   fs.writeFileSync(path.join(temp, 'outside.svg'), '<svg/>');
   const file = path.join(temp, 'stickers', 'catalog.json');
   fs.writeFileSync(file, JSON.stringify([
     { id: 'wave', src: '/stickers/wave.svg', label: ' 招手 ' },
+    { id: 'nested', src: '/stickers/default/nested.svg', label: '子目录' },
+    { id: 'nested-traversal', src: '/stickers/default/../outside.svg', label: '绕行' },
     { id: 'wave', src: '/stickers/wave.svg', label: '重复招手' },
     { id: 'remote', src: 'https://example.test/stickers/image.svg', label: '外链' },
     { id: 'traversal', src: '/stickers/../outside.svg', label: '目录外' },
@@ -286,7 +290,10 @@ test('sticker catalog accepts only existing local image files and messages conta
     { id: 'long-label', src: '/stickers/wave.svg', label: '字'.repeat(31) }
   ]));
   const catalog = loadStickerCatalog(file, temp);
-  assert.deepEqual(catalog, [{ id: 'wave', src: '/stickers/wave.svg', label: '招手' }]);
+  assert.deepEqual(catalog, [
+    { id: 'wave', src: '/stickers/wave.svg', label: '招手' },
+    { id: 'nested', src: '/stickers/default/nested.svg', label: '子目录' }
+  ]);
   const chat = new RoomChat({ stickerCatalog: catalog });
   const { message } = chat.accept({ id: 'host', role: 'PLAYER' }, {
     clientMessageId: 'sticker-1', kind: 'sticker', stickerId: 'wave', src: 'https://example.test/evil.png', text: '<img src=x>'

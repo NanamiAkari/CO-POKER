@@ -1,114 +1,121 @@
 [
   {
-    "id": "ba-mu-wei-1",
-    "label": "点赞",
-    "src": "/stickers/ba-mu-wei-1.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-2",
-    "label": "比耶",
-    "src": "/stickers/ba-mu-wei-2.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-3",
-    "label": "无语",
-    "src": "/stickers/ba-mu-wei-3.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-4",
-    "label": "差评",
-    "src": "/stickers/ba-mu-wei-4.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-5",
-    "label": "流汗",
-    "src": "/stickers/ba-mu-wei-5.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-6",
-    "label": "慌张",
-    "src": "/stickers/ba-mu-wei-6.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-7",
-    "label": "报警",
-    "src": "/stickers/ba-mu-wei-7.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
-    "id": "ba-mu-wei-8",
-    "label": "困困",
-    "src": "/stickers/ba-mu-wei-8.gif",
-    "theme": "ba-mu-wei",
-    "themeLabel": "八木唯"
-  },
-  {
     "id": "si-kao",
     "label": "思考",
-    "src": "/stickers/si-kao.png",
+    "src": "/stickers/default/si-kao.png",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "wo-yao-yan-pai",
     "label": "我要验牌",
-    "src": "/stickers/wo-yao-yan-pai.jpg",
+    "src": "/stickers/default/wo-yao-yan-pai.jpg",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "zhen-han-mei-wei",
     "label": "震撼美味",
-    "src": "/stickers/zhen-han-mei-wei.jpg",
+    "src": "/stickers/default/zhen-han-mei-wei.jpg",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "ye-ting-hao",
     "label": "也挺好",
-    "src": "/stickers/ye-ting-hao.gif",
+    "src": "/stickers/default/ye-ting-hao.gif",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "duan-cha",
     "label": "端茶",
-    "src": "/stickers/duan-cha.gif",
+    "src": "/stickers/default/duan-cha.gif",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "na-ni",
     "label": "纳尼",
-    "src": "/stickers/na-ni.gif",
+    "src": "/stickers/default/na-ni.gif",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "jing-ya",
     "label": "惊讶",
-    "src": "/stickers/jing-ya.gif",
+    "src": "/stickers/default/jing-ya.gif",
     "theme": "default",
     "themeLabel": "默认"
   },
   {
     "id": "jing",
     "label": "惊",
-    "src": "/stickers/jing.gif",
+    "src": "/stickers/default/jing.gif",
     "theme": "default",
     "themeLabel": "默认"
+  },
+  {
+    "id": "mao-wei-cao",
+    "label": "猫尾草",
+    "src": "/stickers/default/mao-wei-cao.webp",
+    "theme": "default",
+    "themeLabel": "默认"
+  },
+  {
+    "id": "ba-mu-wei-1",
+    "label": "点赞",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-1.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-2",
+    "label": "比耶",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-2.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-3",
+    "label": "无语",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-3.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-4",
+    "label": "差评",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-4.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-5",
+    "label": "流汗",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-5.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-6",
+    "label": "慌张",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-6.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-7",
+    "label": "报警",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-7.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
+  },
+  {
+    "id": "ba-mu-wei-8",
+    "label": "困困",
+    "src": "/stickers/ba-mu-wei/ba-mu-wei-8.gif",
+    "theme": "ba-mu-wei",
+    "themeLabel": "八木唯"
   }
 ]

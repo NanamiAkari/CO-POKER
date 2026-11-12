@@ -371,12 +371,14 @@ test('Enter sends, Shift+Enter permits newlines, and IME confirmation never send
 test('sticker catalog allows only local assets and sticker sends leave text drafts unchanged', () => {
   const { chat, sent, receive } = fixture({ catalog: [
     { id: 'hi', label: '打招呼', src: '/stickers/hi.webp' },
+    { id: 'sub', label: '子目录', src: '/stickers/default/sub.webp' },
     { id: 'outside', label: '远程', src: 'https://example.com/a.png' },
     { id: 'traversal', label: '越界', src: '/stickers/../secret.svg' },
+    { id: 'nested-traversal', label: '绕行', src: '/stickers/default/../secret.svg' },
     { id: 'query', label: '参数', src: '/stickers/hi.svg?payload=1' },
     { id: 'hi', label: '重复', src: '/stickers/second.png' }
   ] });
-  assert.equal(chat.chatStickers.value.length, 1);
+  assert.deepEqual(chat.chatStickers.value.map(item => item.src), ['/stickers/hi.webp', '/stickers/default/sub.webp']);
   chat.chatDraft.value = '未发送草稿';
   assert.equal(chat.sendSticker('hi'), true);
   assert.deepEqual(Object.keys(sent[0]).sort(), ['clientMessageId', 'kind', 'roomId', 'stickerId', 'type']);
