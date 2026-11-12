@@ -13,7 +13,7 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
     assert.match(homeHtml, /seat-layout\.css/);
     assert.match(homeHtml, /selection-guard\.css/);
 
-    for (const cssFile of ['seat-layout.css', 'selection-guard.css']) {
+    for (const cssFile of ['seat-layout.css', 'selection-guard.css', 'player-marks.css']) {
       const css = await fetch(`http://127.0.0.1:${address.port}/${cssFile}?v=1`);
       assert.equal(css.status, 200);
       assert.match(css.headers.get('content-type'), /^text\/css/);
@@ -24,6 +24,11 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
         assert.match(rules, /\.chat-log[\s\S]*user-select:\s*text/);
       }
     }
+
+    const marksScript = await fetch(`http://127.0.0.1:${address.port}/player-marks.js?v=1`);
+    assert.equal(marksScript.status, 200);
+    assert.match(marksScript.headers.get('content-type'), /^text\/javascript/);
+    assert.match(await marksScript.text(), /PlayerMarks/);
 
     const coin = await fetch(`http://127.0.0.1:${address.port}/assets/coin-1.svg?v=1`);
     assert.equal(coin.status, 200);

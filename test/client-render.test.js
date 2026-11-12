@@ -13,6 +13,7 @@ const { findBestHand, compareHands } = require('../src/poker');
 const RoomChat = require('../public/room-chat');
 const TomatoInteractions = require('../public/tomato-interactions');
 const TomatoSound = require('../public/tomato-sound');
+const PlayerMarks = require('../public/player-marks');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -27,9 +28,9 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, TomatoSound, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, TomatoSound, PlayerMarks, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
-    localStorage: { getItem: () => null, setItem() {} },
+    localStorage: environment.localStorage || { getItem: () => null, setItem() {} },
     ...timers, console
   };
   Object.assign(context.window, environment.window);
@@ -712,4 +713,72 @@ test('one persistent skip control stays outside every animation panel and displa
     const output=await renderScreen(v=>{v.inRoom.value=true;v.role.value=role;v.presentation.value=stage;Object.assign(v.state,base);});
     assert.doesNotMatch(output,/class="skip-comparison"/);
   }
+});
+
+test('private player marks render on the target card back only for their owner', async () => {
+  const storageData = new Map();
+  const storage = { getItem: key => storageData.get(key) ?? null, setItem: (key, value) => storageData.set(key, String(value)) };
+  const base = v => {
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER'; v.roomId.value = 'ABC123';
+    Object.assign(v.state, { phase:'ROUND_1_COINS', players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}], options:{handCardCount:2,handUsageRule:'any',includeJokers:false} });
+  };
+  const marked = await renderScreen(v => {
+    base(v);
+    assert.equal(v.openMark('B'), undefined);
+    v.markDraft.category = '一对';
+    assert.equal(v.toggleMarkCard({ rank: 14, suit: 's' }), true);
+    v.saveMark();
+  }, undefined, { localStorage: storage });
+  const seatB = marked.match(/<article[^>]*data-player="B"[\s\S]*?<\/article>/)[0];
+  assert.match(seatB, /class="[^"]*private-guess/);
+  assert.doesNotMatch(seatB, /private-mark-tag/);
+  assert.doesNotMatch(seatB, /我的标记/);
+  assert.ok(storageData.get('poker.privateMarks.v1'), 'the mark is stored locally');
+
+  const editor = await renderScreen(v => {
+    base(v);
+    v.openMark('B');
+    v.markDraft.category = '一对';
+  }, undefined, { localStorage: storage });
+  assert.match(editor, /class="mark-player-name"[^>]*>B</);
+  assert.doesNotMatch(editor, /备注|可能牌型|不选具体牌|mark-help/);
+  assert.equal((editor.match(/class="mark-category-choice/g) || []).length, 9);
+  assert.equal((editor.match(/class="mark-deck-card/g) || []).length, 52);
+  assert.match(editor, /class="mark-selected-hand"/);
+  assert.match(editor, /data-label="一对"/);
+  assert.match(editor, /data-label="保存"/);
+  assert.match(editor, /data-label="清除"/);
+
+  const otherViewer = await renderScreen(v => {
+    base(v); v.playerId.value = 'C';
+  }, undefined, { localStorage: storage });
+  const otherSeatB = otherViewer.match(/<article[^>]*data-player="B"[\s\S]*?<\/article>/)[0];
+  assert.doesNotMatch(otherSeatB, /private-guess/);
+  assert.doesNotMatch(otherSeatB, /我的标记/, 'marks are private to the viewer that made them');
+
+  const revealed = await renderScreen(v => {
+    base(v); v.presentation.value = 'table';
+    v.state.finalHands = [{ playerId:'B', coin:2, holeCards:[{rank:14,suit:'h'},{rank:13,suit:'c'}], hand:{category:1,tiebreak:[14,13,9,5,3]} }];
+  }, undefined, { localStorage: storage });
+  const revealedSeatB = revealed.match(/<article[^>]*data-player="B"[\s\S]*?<\/article>/)[0];
+  assert.doesNotMatch(revealedSeatB, /private-guess/, 'real cards take precedence over the guess');
+  assert.doesNotMatch(revealedSeatB, /private-mark-tag/);
+});
+
+
+test('a category-only mark uses a pictogram instead of a text badge', async () => {
+  const storageData = new Map();
+  const storage = { getItem: key => storageData.get(key) ?? null, setItem: (key, value) => storageData.set(key, String(value)) };
+  const output = await renderScreen(v => {
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER'; v.roomId.value = 'ABC124';
+    Object.assign(v.state, { phase:'ROUND_1_COINS', players:[{id:'A',currentCoin:1},{id:'B',currentCoin:null}], options:{handCardCount:2,handUsageRule:'any',includeJokers:false} });
+    v.openMark('B');
+    v.markDraft.category = '一对';
+    v.saveMark();
+  }, undefined, { localStorage: storage });
+  const seatB = output.match(/<article[^>]*data-player="B"[\s\S]*?<\/article>/)[0];
+  assert.match(seatB, /class="private-mark-icon"/);
+  assert.match(seatB, /<svg viewBox="0 0 24 24"/);
+  assert.doesNotMatch(seatB, /private-guess/);
+  assert.doesNotMatch(seatB, /private-mark-tag/);
 });

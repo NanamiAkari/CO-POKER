@@ -4,6 +4,7 @@
   const { createApp, ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } = Vue;
   const Art = window.TabletopArt;
   const Highlights = window.HandHighlights;
+  const Marks = window.PlayerMarks;
   const COIN_PHASES = ['ROUND_1_COINS', 'ROUND_2_COINS', 'ROUND_3_COINS', 'ROUND_4_COINS'];
   const SERIES_PRESETS = [1, 2, 3, 4, 5];
   const MAX_SERIES_LENGTH = 99;
@@ -82,6 +83,15 @@
     // (deal, round change, reveal) may freeze the whole tray.
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!busy.value&&COIN_PHASES.includes(state.phase));
     const canSendTomato=computed(()=>connected.value&&!isResult.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
+    const canOpenSeatActions=computed(()=>connected.value&&inRoom.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
+    const marks=Marks.create({
+      Vue,
+      storage:typeof localStorage==='undefined'?null:localStorage,
+      roomId,
+      playerId,
+      handCount,
+      includeJokers:computed(()=>state.options?.includeJokers===true)
+    });
     const canTakeCoin=computed(()=>canAct.value&&myCoin.value===null);
     const showSkipComparison=computed(()=>role.value==='PLAYER'&&Boolean(state.result)&&['hold','select','gap','compare'].includes(presentation.value));
     const hasSkippedComparison=computed(()=>state.comparisonSkipVotes.includes(playerId.value));
@@ -153,8 +163,7 @@
       if(!target?.closest?.('.seat-action-target,.seat-action-menu'))closeSeatActions();
     }
     function toggleSeatActions(id){
-      if(!canSendTomato.value||!state.players.some(player=>player.id===id&&player.id!==playerId.value))return;
-      primeTomatoSound();
+      if(!canOpenSeatActions.value||!state.players.some(player=>player.id===id&&player.id!==playerId.value))return;
       chat.closeChat();
       activeSeatAction.value=activeSeatAction.value===id?null:id;
     }
@@ -163,6 +172,33 @@
       primeTomatoSound();
       tomato.sendTomato(id);
       closeSeatActions();
+    }
+    function openMark(targetId){
+      if(!targetId||targetId===playerId.value)return;
+      if(!state.players.some(player=>player.id===targetId))return;
+      closeSeatActions();chat.closeChat();
+      if(!marks.openMark(targetId))return;
+      focusBeforePanel=document.activeElement;panel.value='mark';notice.value='';
+      nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());
+      tone('card');
+    }
+    function saveMark(){
+      marks.saveMark();
+      panel.value=null;
+      nextTick(()=>focusBeforePanel?.focus?.());
+      tone('card');
+    }
+    function clearMark(targetId){
+      const target=targetId||marks.markTarget.value;
+      if(!target)return;
+      marks.clearMark(target);
+      panel.value=null;
+      nextTick(()=>focusBeforePanel?.focus?.());
+      tone('card');
+    }
+    function privateGuessCards(targetId){return marks.guessCardsFor(targetId);}
+    function privateGuessVisible(targetId){
+      return role.value!=='SPECTATOR'&&presentation.value!=='table'&&privateGuessCards(targetId).length>0;
     }
     function hideHonorTip(){honorTip.value=null;}
     // Native title tooltips are slow and easy to miss. The honor board has
@@ -192,7 +228,7 @@
       return presentation.value==='table'?finalHandFor(id)?.holeCards?.[index]||null:null;
     }
     const historyLabel=computed(()=>({all:'历史公开',self:'历史仅自己可见',none:'隐藏历史'})[state.options?.historyVisibility]);
-    const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',leave:'离开牌桌'})[panel.value]);
+    const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',mark:'标记玩家',leave:'离开牌桌'})[panel.value]);
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];
     const rulePages=[
       {title:'游戏目标',topic:'目标',intro:'这是一款 2–8 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
@@ -365,7 +401,7 @@
       if(kind==='impact'){primeTomatoSound();tomatoSound.playImpact();return;}
       tone(kind);
     }
-    function openPanel(which){closeSeatActions();chat.closeChat();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;if(which==='create')syncSeriesLengthControls();nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
+    function openPanel(which){closeSeatActions();chat.closeChat();if(panel.value==='mark')marks.closeMark();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;if(which==='create')syncSeriesLengthControls();nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
     function prepareRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;syncRoomSettingsFromState();openPanel('room-settings');}
     function saveRoomSettings(){
       if(!isHost.value||state.phase!=='GAME_OVER')return;
@@ -373,7 +409,7 @@
       command('UPDATE_ROOM_OPTIONS',{options:{...roomSettings,seriesLength:roomSettings.seriesLength}});
       panel.value=null;
     }
-    function closePanel(){if(pending.value&&!inRoom.value)return;panel.value=null;nextTick(()=>focusBeforePanel?.focus?.());}
+    function closePanel(){if(pending.value&&!inRoom.value)return;if(panel.value==='mark')marks.closeMark();panel.value=null;nextTick(()=>focusBeforePanel?.focus?.());}
     function goRulePage(index){
       ruleStep.value=Math.max(0,Math.min(rulePages.length-1,index));
       nextTick(()=>{const body=document.querySelector('.rule-body');if(body)body.scrollTop=0;});
@@ -423,7 +459,8 @@
       if(copied)notify('房间号已复制');
       else notify(`无法自动复制，请手动复制房间号：${code}`,true);
     }
-    function resetRoom(text=''){
+    function resetRoom(text='',options={}){
+      if(!options.keepMarks)marks.resetRoom();
       chat.resetChat();
       tomato.reset();
       tomatoSound.reset();
@@ -593,14 +630,14 @@
       ensureAudioContext();
       void tomatoSound.preload();
     },{immediate:true});
-    watch([canSendTomato,()=>state.players.map(player=>player.id)],()=>{if(!canSendTomato.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
+    watch([canOpenSeatActions,()=>state.players.map(player=>player.id)],()=>{if(!canOpenSeatActions.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
     watch(seriesTableMode,hideHonorTip);
     watch(presentation,hideHonorTip);
     watch(()=>state.options,()=>{if(panel.value==='room-settings'||!inRoom.value)syncRoomSettingsFromState();},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
-    onBeforeUnmount(()=>{resetRoom();window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...chat,...Art};
+    onBeforeUnmount(()=>{resetRoom('',{keepMarks:true});window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

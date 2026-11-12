@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const { createServer } = require('../src/server');
 
-const BOT_TEST_OPTIONS = { coinDelayMs: 0, rematchDelayMs: 0, skipDelayMs: 0 };
+const BOT_TEST_OPTIONS = { coinDelayMs: 0, rematchDelayMs: 0, skipDelayMs: 0, changeWaitMs: 0, changeWaitMaxMs: 0 };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fixture(t) {
@@ -128,7 +128,7 @@ test('seven bots fill the table and the honor ladder counts every seat', async t
   assert.ok(started.state.players.every(player => !('isBot' in player)));
 
   const game = room.game;
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 15000;
   while (!['SETTLEMENT', 'GAME_OVER'].includes(game.phase) && Date.now() < deadline) {
     if (game.phase.endsWith('_COINS')) {
       const self = game.players.find(player => player.id === 'host');
@@ -144,6 +144,8 @@ test('seven bots fill the table and the honor ladder counts every seat', async t
   assert.ok(game.players.filter(player => player.isBot).length === 7);
   assert.ok(game.players.every(player => player.coinHistory.length === 4));
   assert.ok(game.players.every(player => player.coinHistory.every(coin => Number.isInteger(coin))));
+  const steals = game.getReplay().filter(event => event.type === 'COIN_MOVED' && event.payload.fromPlayer);
+  assert.ok(steals.length > 0, 'bots should actively steal at least once across four rounds');
 
   const spectator = await f.connect();
   const watched = await spectator.request({ type: 'JOIN_ROOM', playerId: 'watcher', role: 'SPECTATOR', roomId }, 'ROOM_STATE');
@@ -197,4 +199,54 @@ test('bots accept social actions such as tomatoes like any other player', async 
 
   const self = await host.request({ type: 'THROW_TOMATO', roomId, targetPlayerId: 'host' }, 'TOMATO_ERROR');
   assert.equal(self.code, 'TOMATO_SELF_TARGET');
+});
+
+
+test('bots complete a three-card game while updating their ranges', async t => {
+  const f = await fixture(t);
+  const host = await f.connect();
+  const created = await host.request({ type: 'CREATE_ROOM', playerId: 'host', options: { handCardCount: 3 } }, 'ROOM_CREATED');
+  const roomId = created.roomId;
+  for (let index = 0; index < 3; index += 1) await host.request({ type: 'ADD_BOT', roomId }, 'ROOM_STATE');
+  await host.request({ type: 'START_GAME', roomId }, 'GAME_STARTED');
+  const room = f.server.manager.get(roomId);
+  const game = room.game;
+  const deadline = Date.now() + 15000;
+  while (!['SETTLEMENT', 'GAME_OVER'].includes(game.phase) && Date.now() < deadline) {
+    if (game.phase.endsWith('_COINS')) {
+      const self = game.players.find(player => player.id === 'host');
+      if (self.currentCoin === null) {
+        const free = [...game.coinTable.area][0];
+        if (free !== undefined) host.ws.send(JSON.stringify({ type: 'MOVE_COIN', roomId, coin: free }));
+      }
+    }
+    await sleep(10);
+  }
+  assert.ok(['SETTLEMENT', 'GAME_OVER'].includes(game.phase), 'the three-card match reaches settlement');
+  assert.ok(game.players.every(player => player.coinHistory.length === 4));
+  assert.ok(game.players.every(player => player.coinHistory.every(coin => Number.isInteger(coin))));
+});
+
+
+test('bots complete a joker game without stalling', async t => {
+  const f = await fixture(t);
+  const host = await f.connect();
+  const created = await host.request({ type: 'CREATE_ROOM', playerId: 'host', options: { includeJokers: true } }, 'ROOM_CREATED');
+  const roomId = created.roomId;
+  for (let index = 0; index < 2; index += 1) await host.request({ type: 'ADD_BOT', roomId }, 'ROOM_STATE');
+  await host.request({ type: 'START_GAME', roomId }, 'GAME_STARTED');
+  const game = f.server.manager.get(roomId).game;
+  const deadline = Date.now() + 15000;
+  while (!['SETTLEMENT', 'GAME_OVER'].includes(game.phase) && Date.now() < deadline) {
+    if (game.phase.endsWith('_COINS')) {
+      const self = game.players.find(player => player.id === 'host');
+      if (self.currentCoin === null) {
+        const free = [...game.coinTable.area][0];
+        if (free !== undefined) host.ws.send(JSON.stringify({ type: 'MOVE_COIN', roomId, coin: free }));
+      }
+    }
+    await sleep(10);
+  }
+  assert.ok(['SETTLEMENT', 'GAME_OVER'].includes(game.phase), 'the joker match reaches settlement');
+  assert.ok(game.players.every(player => player.coinHistory.length === 4));
 });

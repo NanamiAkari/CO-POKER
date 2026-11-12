@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/chat-bubbles.css?v=20261103-settlement-stickers">
   <link rel="stylesheet" href="/tomato-interactions.css?v=20261011-tomato">
   <link rel="stylesheet" href="/seat-actions.css?v=20261011-seat-actions">
+  <link rel="stylesheet" href="/player-marks.css?v=20261112-visual-marks">
 </head>
 <body>
 <div id="boot-status" class="boot"><i>♣</i><span>加载中…</span></div>
@@ -67,14 +68,22 @@
         <div class="table-rim"><div class="table-felt"><span class="felt-emblem">♣</span></div></div>
         <div class="opponents" :class="{compact:compactSeats}">
           <article v-for="(player,i) in opponents" :key="player.id" class="seat" :data-player="player.id">
-            <div class="seat-action-target" role="button" :tabindex="canSendTomato?0:-1" :aria-disabled="!canSendTomato" :aria-expanded="activeSeatAction===player.id" :aria-label="`打开 ${player.id} 的互动动作`" @click.stop="toggleSeatActions(player.id)" @keydown.enter.prevent.stop="toggleSeatActions(player.id)" @keydown.space.prevent.stop="toggleSeatActions(player.id)">
+            <div class="seat-action-target" role="button" :tabindex="canOpenSeatActions?0:-1" :aria-disabled="!canOpenSeatActions" :aria-expanded="activeSeatAction===player.id" :aria-label="`打开 ${player.id} 的互动动作`" @click.stop="toggleSeatActions(player.id)" @keydown.enter.prevent.stop="toggleSeatActions(player.id)" @keydown.space.prevent.stop="toggleSeatActions(player.id)">
               <span class="seat-name"><span class="avatar">{{i%2?'♦':'♣'}}</span>{{player.id}}</span>
-              <div class="seat-cards" :class="{'spectator-reveal':role==='SPECTATOR'}"><playing-card v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card></div>
+              <div class="seat-cards" :class="{'spectator-reveal':role==='SPECTATOR'}">
+                <template v-if="privateGuessVisible(player.id)">
+                  <playing-card v-for="(card,gi) in privateGuessCards(player.id)" :key="'guess'+gi" :card="card" class="private-guess"></playing-card>
+                  <playing-card v-for="n in Math.max(0,handCount-privateGuessCards(player.id).length)" :key="'guessback'+n" :card="opponentHoleCard(player.id,privateGuessCards(player.id).length+n-1)"></playing-card>
+                </template>
+                <playing-card v-else v-for="n in handCount" :key="n" :card="opponentHoleCard(player.id,n-1)"></playing-card>
+                <span v-if="!privateGuessCards(player.id).length && markFor(player.id)?.category" class="private-mark-icon" :aria-label="markNote(player.id)" v-html="markIconSvg(markFor(player.id)?.category)"></span>
+              </div>
             </div>
             <div class="seat-coin" :data-owner-anchor="player.id"><button v-if="player.currentCoin" class="coin-button" :data-live-coin="player.currentCoin" :disabled="!canAct||coinLocked(player.currentCoin)" :aria-label="`抢夺 ${player.id} 的硬币 ${player.currentCoin}`" @click="stealCoin(player.currentCoin,player.id)"><img :src="coinImage(player.currentCoin)" :alt="`硬币 ${player.currentCoin}`"></button></div>
             <div v-if="player.coinHistory?.length" class="history-coins" style="margin:7px auto"><img v-for="(coin,j) in player.coinHistory" :key="j" :src="coinImage(coin)" :alt="`第${j+1}轮 硬币${coin}`"></div>
-            <div v-if="activeSeatAction===player.id&&canSendTomato" class="seat-action-menu" role="menu" :aria-label="`${player.id} 的互动动作`" @click.stop>
-              <button class="seat-action-item" type="button" role="menuitem" :disabled="!connected" :aria-label="`向 ${player.id} 扔番茄`" @click.stop="sendTomatoAndClose(player.id)"><img src="/assets/tomato.svg" alt="" aria-hidden="true"><span>扔番茄</span></button>
+            <div v-if="activeSeatAction===player.id&&canOpenSeatActions" class="seat-action-menu" role="menu" :aria-label="`${player.id} 的互动动作`" @click.stop>
+              <button class="seat-action-item" type="button" role="menuitem" :disabled="!canSendTomato" :aria-label="`向 ${player.id} 扔番茄`" @click.stop="sendTomatoAndClose(player.id)"><img src="/assets/tomato.svg" alt="" aria-hidden="true"><span>扔番茄</span></button>
+              <button class="seat-action-item" type="button" role="menuitem" :disabled="!connected" :aria-label="`标记 ${player.id} 可能的手牌`" @click.stop="openMark(player.id)"><span aria-hidden="true">✎</span><span>标记</span></button>
             </div>
             <chat-bubble v-if="!isResult||presentation==='table'" :message="chatBubbleFor(player.id)" :sticker="chatSticker(chatBubbleFor(player.id)?.stickerId)"></chat-bubble>
           </article>
@@ -229,7 +238,7 @@
 
     <transition name="fade">
       <div v-if="panel" class="modal-shade" @click.self="closePanel" @keydown.esc="closePanel">
-        <section class="modal" :class="{'rules-modal':panel==='rules'}" role="dialog" aria-modal="true" :aria-label="panelTitle" @keydown="ruleKey">
+        <section class="modal" :class="{'rules-modal':panel==='rules','mark-modal':panel==='mark'}" role="dialog" aria-modal="true" :aria-label="panelTitle" @keydown="ruleKey">
           <button class="icon-button modal-close" @click="closePanel" aria-label="关闭">×</button>
           <template v-if="panel==='create'||panel==='join'">
             <h2>{{panel==='create'?'创建房间':'加入房间'}}</h2>
@@ -303,6 +312,26 @@
             </div>
             <nav class="rules-pagination" aria-label="规则翻页"><button class="rule-page-button" :disabled="ruleStep===0" @click="goRulePage(ruleStep-1)">← 上一页</button><span class="rule-page-count" aria-live="polite">{{ruleStep+1}} / {{rulePages.length}}</span><button class="rule-page-button" :disabled="ruleStep===rulePages.length-1" @click="goRulePage(ruleStep+1)">下一页 →</button></nav>
           </template>
+          <template v-else-if="panel==='mark'">
+            <h2 class="mark-player-name">{{ markTarget }}</h2>
+            <div class="mark-selected-hand" role="group" aria-label="已选猜牌">
+              <button v-for="(card,ci) in markDraft.cards" :key="cardText(card)+ci" type="button" class="mark-selected-card" :aria-label="`移除 ${cardText(card)}`" @click="removeMarkCard(ci)">
+                <img :src="cardImage(card)" alt="">
+                <span class="mark-selected-remove" aria-hidden="true">×</span>
+              </button>
+              <span v-for="n in Math.max(0,maxMarkCards-markDraft.cards.length)" :key="'empty'+n" class="mark-selected-slot" aria-hidden="true"></span>
+            </div>
+            <div class="mark-category-row" role="group" aria-label="牌型标记">
+              <button v-for="category in markCategories" :key="category" type="button" class="mark-category-choice" :class="{active:markDraft.category===category}" :data-label="category" :aria-label="category" :aria-pressed="markDraft.category===category" @click="selectMarkCategory(category)" v-html="markIconSvg(category)"></button>
+            </div>
+            <div class="mark-deck" role="group" aria-label="选择具体猜牌">
+              <button v-for="card in markDeckCards" :key="cardText(card)" type="button" class="mark-deck-card" :class="{selected:markHasCard(card)}" :aria-label="cardText(card)" :aria-pressed="markHasCard(card)" @click="toggleMarkCard(card)"><img :src="cardImage(card)" alt=""></button>
+            </div>
+            <div class="mark-actions">
+              <button type="button" class="mark-action primary" :disabled="markDraftEmpty" aria-label="保存标记" data-label="保存" @click="saveMark"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="mark-action" :disabled="!hasMark(markTarget)" aria-label="清除标记" data-label="清除" @click="clearMark(markTarget)"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14M9 7V5h6v2m-8 0 1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            </div>
+          </template>
           <template v-else-if="panel==='leave'"><h2>离开房间？</h2><p>{{role==='PLAYER'&&state.phase!=='WAITING'?'离开会结束当前房间，所有人返回主菜单。':'你将返回主菜单。'}}</p><button class="gold-button wide" @click="leaveRoom">返回主菜单</button><button class="text-button wide" @click="closePanel">继续游戏</button></template>
         </section>
       </div>
@@ -317,6 +346,7 @@
 <script src="/room-chat.js?v=20261031-sticker-tabs"></script>
 <script src="/tomato-sound.js?v=20261107-volume"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
-<script src="/game-client.js?v=20261107-coin-lock"></script>
+<script src="/player-marks.js?v=20261112-icon-v4"></script>
+<script src="/game-client.js?v=20261112-visual-marks"></script>
 </body>
 </html>
