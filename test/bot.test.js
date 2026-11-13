@@ -311,3 +311,40 @@ test('changed bots wait past the old 2.4s cap for unchanged bots to take coins',
   assert.deepEqual(actions.map(action => action.toPlayerId), ['B', 'C']);
   driver.stop();
 });
+
+test('a round-one bot robbed of its coin follows the next rank instead of the last free coin', () => {
+  const game = new GameRoom({ players: ['H', 'B', 'C'], botIds: ['B'], random: () => 0.2 });
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['H', 'B', 'C']);
+  game.communityCards = [];
+  const bot = game.players.find(player => player.id === 'B');
+  bot.holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }];
+  game.moveCoin(2, 'B');
+  game.moveCoin(3, 'C');
+  const fake = fakeTimers();
+  const actions = [];
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'H' },
+    onChange: payload => { if (payload?.coinAction) actions.push(payload.coinAction); driver.sync(); },
+    random: () => 0,
+    setTimeoutFn: fake.setTimeoutFn,
+    clearTimeoutFn: fake.clearTimeoutFn,
+    coinDelayMs: 0,
+    coinActionGapMs: 0,
+    changeWaitMs: 0,
+    changeWaitMaxMs: 0
+  });
+  driver.sync();
+  assert.equal(bot.currentCoin, 2);
+  assert.equal(fake.timers.length, 0);
+  // H steals B's rank-2 coin; rank 3 is still held by C, so B must go for 3.
+  game.moveCoin(2, 'H', 'B');
+  driver.sync();
+  assert.equal(bot.currentCoin, null);
+  fake.next();
+  assert.equal(bot.currentCoin, 3);
+  assert.equal(actions[0].coin, 3);
+  assert.equal(actions[0].fromPlayerId, 'C');
+  driver.stop();
+});

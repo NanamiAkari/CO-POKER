@@ -546,16 +546,16 @@
       }
       await Promise.all(animations);
     }
-    // A normal coin move gets its own flight instead of blocking the state
-    // queue. Different coins can therefore be in the air at the same time,
-    // while the server still releases bot actions one at a time.
+    // Normal coin moves are serialized: the next snapshot is not presented
+    // until this coin has landed. Otherwise a steal could start while the
+    // same-rank coin is still in the air, briefly showing two identical coins.
     function startCoinFlight(coin,from,epoch){
-      if(!from||prefs.reducedMotion)return;
-      void nextTick().then(()=>{
+      if(!from||prefs.reducedMotion)return Promise.resolve();
+      return nextTick().then(()=>{
         if(!live(epoch))return;
         const element=findCoinElement(coin);
         if(!element)return;
-        void flyCoin(coin,from,element.getBoundingClientRect(),element,epoch);
+        return flyCoin(coin,from,element.getBoundingClientRect(),element,epoch);
       }).catch(()=>{});
     }
     async function present(msg,epoch){
@@ -584,7 +584,7 @@
       if(!['MOVE_COIN','RETURN_COIN'].includes(pendingCommand))unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
       if(newHand){presentation.value='deal';await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
-      else if(movingAction){startCoinFlight(movingAction.coin,movingFrom,epoch);tone('coin');}
+      else if(movingAction){tone('coin');await startCoinFlight(movingAction.coin,movingFrom,epoch);}
       else if(stageChange&&!next.result&&COIN_PHASES.includes(next.phase)){tone('card');await sleep(prefs.reducedMotion?300:1450);}
       if(!live(epoch))return;
       if(next.result){

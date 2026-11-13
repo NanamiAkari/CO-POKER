@@ -372,6 +372,7 @@ class BotBrain {
     this.round1Contests = 0;
     this.round1Backup = null;
     this.round1Failed = false;
+    this.round1Displaced = false;
     this.roundStartedAt = 0;
     this.rangeFilteredBoardLength = 0;
   }
@@ -404,6 +405,7 @@ class BotBrain {
     this.round1Contests = 0;
     this.round1Backup = null;
     this.round1Failed = false;
+    this.round1Displaced = false;
     this.roundStartedAt = 0;
     this.rangeFilteredBoardLength = 0;
     this.ensurePool(game, bot);
@@ -480,6 +482,7 @@ class BotBrain {
       this.round1Contests = 0;
       this.round1Backup = null;
       this.round1Failed = false;
+      this.round1Displaced = false;
       this.roundStartedAt = now;
       return;
     }
@@ -713,6 +716,16 @@ class BotBrain {
       const free = [...game.coinTable.area];
       const storedBackup = Number.isInteger(this.round1Backup) && free.includes(this.round1Backup) ? this.round1Backup : null;
       const backup = storedBackup ?? bestFreeCoin(this.preferredCoin ?? theft.coin, free, random);
+      // If this bot was holding a coin and someone ahead stole it, follow the
+      // same downstream rule as later rounds: go for k+1 (take it from the
+      // public area when free, otherwise steal it). This is not a failed grab.
+      const isFailedGrab = Boolean(this.lastSteal && this.lastSteal.coin === theft.coin && this.lastSteal.victimId === holder.id);
+      if (!isFailedGrab) {
+        this.round1Displaced = true;
+        this.lastSteal = null;
+        this.target = theft.coin + 1 <= game.players.length ? theft.coin + 1 : null;
+        return;
+      }
       if (this.round1Contests < 1 && free.length) {
         const strength = estimateStrength(game, bot);
         const probability = contestProbability(strength, theft.coin, backup, game.players.length);
@@ -724,6 +737,7 @@ class BotBrain {
         }
       }
       this.round1Failed = true;
+      this.lastSteal = null;
       this.target = Number.isInteger(backup) ? backup : bestFreeCoin(theft.coin, free, random);
       return;
     }
@@ -769,6 +783,15 @@ class BotBrain {
     }
     if (this.mode === 'round1') {
       const free = [...game.coinTable.area];
+      if (this.round1Displaced) {
+        const target = Number.isInteger(this.target) ? this.target : null;
+        if (Number.isInteger(target) && target >= 1 && target <= game.players.length) {
+          if (game.coinTable.area.has(target)) return { coin: target, fromPlayerId: null };
+          const holder = game.coinTable.owners.get(target);
+          if (holder && holder !== bot.id) return { coin: target, fromPlayerId: holder };
+        }
+        return this.takeBestFree(game, random);
+      }
       const target = Number.isInteger(this.target) ? this.target : this.preferredCoin;
       if (!Number.isInteger(target)) return this.takeBestFree(game, random);
       if (free.includes(target)) return { coin: target, fromPlayerId: null };
@@ -800,6 +823,7 @@ class BotBrain {
 
   onActionTaken(coin, fromPlayerId) {
     this.actionCount += 1;
+    this.round1Displaced = false;
     this.observedCoin = coin;
     this.lastHeldCoin = coin;
     this.target = coin;
