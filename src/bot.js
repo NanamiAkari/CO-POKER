@@ -36,7 +36,7 @@ const BOT_STRATEGY = Object.freeze({
   grabRetryDecay: 0.5,
   maxGrabRetries: 2,
   changeWaitMs: 900,
-  changeWaitMaxMs: 2400,
+  changeWaitMaxMs: 10000,
   coinActionGapMs: 500
 });
 
@@ -837,7 +837,7 @@ class BotDriver {
     this.skipDelayMs = skipDelayMs;
     this.strategy = { ...BOT_STRATEGY, ...strategy };
     this.changeWaitMs = changeWaitMs ?? this.strategy.changeWaitMs ?? 900;
-    this.changeWaitMaxMs = changeWaitMaxMs ?? this.strategy.changeWaitMaxMs ?? 2400;
+    this.changeWaitMaxMs = changeWaitMaxMs ?? this.strategy.changeWaitMaxMs ?? 10000;
     this.coinActionGapMs = coinActionGapMs ?? this.strategy.coinActionGapMs ?? 500;
     this.lastCoinActionAt = null;
     this.timers = new Map();

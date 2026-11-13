@@ -273,3 +273,41 @@ test('bot coin actions are separated by the global action gap', () => {
   assert.equal(actions.length, 2, 'the second bot acts after 500ms');
   driver.stop();
 });
+
+test('changed bots wait past the old 2.4s cap for unchanged bots to take coins', () => {
+  const { game, holdBot, climbBot } = roundTwoSetup();
+  const fake = fakeTimers();
+  const actions = [];
+  let now = 0;
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'H' },
+    onChange: payload => { if (payload?.coinAction) actions.push(payload.coinAction); driver.sync(); },
+    random: () => 0,
+    now: () => now,
+    setTimeoutFn: fake.setTimeoutFn,
+    clearTimeoutFn: fake.clearTimeoutFn,
+    coinActionGapMs: 0
+  });
+  driver.sync();
+  const climbTimer = fake.timers.find(item => item.delay >= 900);
+  const holdTimer = fake.timers.find(item => item.delay < 900);
+  assert.ok(climbTimer && holdTimer);
+  const run = item => {
+    const index = fake.timers.indexOf(item);
+    if (index >= 0) fake.timers.splice(index, 1);
+    item.callback();
+  };
+  now = 5000;
+  run(climbTimer);
+  assert.equal(actions.length, 0, 'the changed bot does not steal before the unchanged bot has acted');
+  run(holdTimer);
+  assert.equal(holdBot.currentCoin, 2);
+  assert.equal(actions.length, 1);
+  const waitingClimb = fake.timers.find(item => item.delay >= 900);
+  assert.ok(waitingClimb, 'the changed bot reschedules while waiting');
+  run(waitingClimb);
+  assert.equal(climbBot.currentCoin, 1);
+  assert.deepEqual(actions.map(action => action.toPlayerId), ['B', 'C']);
+  driver.stop();
+});
