@@ -312,7 +312,7 @@ test('changed bots wait past the old 2.4s cap for unchanged bots to take coins',
   driver.stop();
 });
 
-test('a round-one bot robbed of its coin follows the next rank instead of the last free coin', () => {
+test('a round-one bot robbed with only a smaller free coin moves upward', () => {
   const game = new GameRoom({ players: ['H', 'B', 'C'], botIds: ['B'], random: () => 0.2 });
   game.phase = PHASES.ROUND_1_COINS;
   game.coinTable = new CoinTable(['H', 'B', 'C']);
@@ -338,27 +338,26 @@ test('a round-one bot robbed of its coin follows the next rank instead of the la
   driver.sync();
   assert.equal(bot.currentCoin, 2);
   assert.equal(fake.timers.length, 0);
-  // H steals B's rank-2 coin; rank 3 is still held by C, so B must go for 3.
+  // H steals B's rank-2 coin; the only free coin is 1 (smaller), so B moves up.
   game.moveCoin(2, 'H', 'B');
   driver.sync();
   assert.equal(bot.currentCoin, null);
   fake.next();
-  assert.equal(bot.currentCoin, 3);
-  assert.equal(actions[0].coin, 3);
-  assert.equal(actions[0].fromPlayerId, 'C');
+  assert.equal(actions[0].coin, 1);
+  assert.equal(actions[0].fromPlayerId, null);
+  assert.equal(actions[0].toPlayerId, 'B');
   driver.stop();
 });
 
-test('a round-one cascade reclaims the last coin instead of handing coin 1 to the last holder', () => {
+test('a round-one bot robbed with only a larger free coin moves downward', () => {
   const game = new GameRoom({ players: ['H', 'B', 'C', 'D'], botIds: ['B', 'C'], random: () => 0.2 });
   game.phase = PHASES.ROUND_1_COINS;
   game.coinTable = new CoinTable(['H', 'B', 'C', 'D']);
   game.communityCards = [];
-  const bots = ['B', 'C'].map(id => game.players.find(player => player.id === id));
-  bots.forEach(bot => { bot.holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }]; });
-  game.moveCoin(4, 'B');
+  for (const id of ['B', 'C']) game.players.find(player => player.id === id).holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }];
+  game.moveCoin(2, 'B');
   game.moveCoin(3, 'C');
-  game.moveCoin(2, 'D');
+  game.moveCoin(1, 'D');
   const fake = fakeTimers();
   const actions = [];
   let driver;
@@ -374,15 +373,85 @@ test('a round-one cascade reclaims the last coin instead of handing coin 1 to th
     changeWaitMaxMs: 0
   });
   driver.sync();
+  game.moveCoin(2, 'H', 'B');
+  driver.sync();
+  fake.next();
+  assert.equal(game.players.find(player => player.id === 'B').currentCoin, 3);
+  assert.equal(actions[0].coin, 3);
+  assert.equal(actions[0].fromPlayerId, 'C');
+  driver.stop();
+});
+
+test('a round-one cascade follows the smaller free coin upward instead of running to the last coin', () => {
+  const game = new GameRoom({ players: ['H', 'B', 'C', 'D'], botIds: ['B', 'C', 'D'], random: () => 0.2 });
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['H', 'B', 'C', 'D']);
+  game.communityCards = [];
+  for (const id of ['B', 'C', 'D']) game.players.find(player => player.id === id).holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }];
+  game.moveCoin(4, 'B');
+  game.moveCoin(3, 'C');
+  game.moveCoin(2, 'D');
+  const fake = fakeTimers();
+  const actions = [];
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'H' },
+    onChange: payload => {
+      if (payload?.coinAction) actions.push(payload.coinAction);
+      if (actions.length >= 2) { driver.stop(); return; }
+      driver.sync();
+    },
+    random: () => 0,
+    setTimeoutFn: fake.setTimeoutFn,
+    clearTimeoutFn: fake.clearTimeoutFn,
+    coinDelayMs: 0,
+    coinActionGapMs: 0,
+    changeWaitMs: 0,
+    changeWaitMaxMs: 0
+  });
+  driver.sync();
   assert.equal(fake.timers.length, 0);
-  // H leaves coin 1 free and steals C's rank-3 coin. C should cascade to 4,
-  // the last holder B should reclaim 4, and C should take the free 1.
+  // H leaves coin 1 free and steals C's rank-3 coin. The only free coin is
+  // smaller, so C goes up to 2 and D goes up to the free 1; B's 4 is untouched.
   game.moveCoin(3, 'H', 'C');
   driver.sync();
   let guard = 0;
-  while (fake.timers.length && guard < 20) { fake.next(); guard += 1; }
-  assert.equal(game.players.find(player => player.id === 'B').currentCoin, 4);
-  assert.equal(game.players.find(player => player.id === 'C').currentCoin, 1);
-  assert.equal(actions.some(action => action.toPlayerId === 'B' && action.coin === 1), false);
+  while (fake.timers.length && actions.length < 2 && guard < 20) { fake.next(); guard += 1; }
+  assert.deepEqual(actions.map(action => [action.toPlayerId, action.coin]), [['C', 2], ['D', 1]]);
+  assert.equal(actions.some(action => action.toPlayerId === 'B'), false);
+  driver.stop();
+});
+
+test('a round-one bot with free coins on both sides picks the direction randomly', () => {
+  const game = new GameRoom({ players: ['H', 'B', 'C', 'D', 'E'], botIds: ['B', 'C'], random: () => 0.2 });
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['H', 'B', 'C', 'D', 'E']);
+  game.communityCards = [];
+  for (const id of ['B', 'C']) game.players.find(player => player.id === id).holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }];
+  game.moveCoin(3, 'B');
+  game.moveCoin(2, 'C');
+  game.moveCoin(4, 'D');
+  const fake = fakeTimers();
+  const actions = [];
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'H' },
+    onChange: payload => { if (payload?.coinAction) actions.push(payload.coinAction); driver.sync(); },
+    random: () => 0.9,
+    setTimeoutFn: fake.setTimeoutFn,
+    clearTimeoutFn: fake.clearTimeoutFn,
+    coinDelayMs: 0,
+    coinActionGapMs: 0,
+    changeWaitMs: 0,
+    changeWaitMaxMs: 0
+  });
+  driver.sync();
+  // Coin 1 (smaller) and coin 5 (larger) are both free. With random 0.9 the
+  // bot goes up to 2; C then also goes up to the free 1.
+  game.moveCoin(3, 'H', 'B');
+  driver.sync();
+  let guard = 0;
+  while (fake.timers.length && actions.length < 2 && guard < 20) { fake.next(); guard += 1; }
+  assert.deepEqual(actions.map(action => [action.toPlayerId, action.coin]), [['B', 2], ['C', 1]]);
   driver.stop();
 });

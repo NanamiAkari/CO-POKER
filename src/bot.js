@@ -716,16 +716,25 @@ class BotBrain {
       const free = [...game.coinTable.area];
       const storedBackup = Number.isInteger(this.round1Backup) && free.includes(this.round1Backup) ? this.round1Backup : null;
       const backup = storedBackup ?? bestFreeCoin(this.preferredCoin ?? theft.coin, free, random);
-      // If this bot was holding a coin and someone ahead stole it, follow the
-      // same downstream rule as later rounds: go for k+1 (take it from the
-      // public area when free, otherwise steal it). This is not a failed grab.
+      // If this bot was holding a coin and someone stole it, choose the
+      // cascade direction from the free coins left in the public area. This is
+      // not a failed grab, so it does not use the round-one contest/backup.
       const isFailedGrab = Boolean(this.lastSteal && this.lastSteal.coin === theft.coin && this.lastSteal.victimId === holder.id);
       if (!isFailedGrab) {
+        // Choose the cascade direction from the free coins left in the
+        // public area: only larger coins -> move down (k+1), only smaller
+        // coins -> move up (k-1), both -> random. The adjacent coin is then
+        // taken if free or stolen from its holder. At the edge, reclaim.
+        const hasLowerFree = free.some(coin => coin < theft.coin);
+        const hasHigherFree = free.some(coin => coin > theft.coin);
+        let direction = 1;
+        if (hasHigherFree && hasLowerFree) direction = random() < 0.5 ? 1 : -1;
+        else if (hasLowerFree) direction = -1;
+        else if (hasHigherFree) direction = 1;
+        const next = theft.coin + direction;
         this.round1Displaced = true;
         this.lastSteal = null;
-        // No worse rank exists at the last coin: reclaim it instead of
-        // falling back to a much stronger free coin such as 1.
-        this.target = theft.coin + 1 <= game.players.length ? theft.coin + 1 : theft.coin;
+        this.target = next >= 1 && next <= game.players.length ? next : theft.coin;
         return;
       }
       // A failed grab in round one does not retry; the previous displaced
