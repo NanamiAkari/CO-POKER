@@ -35,7 +35,7 @@ test('bots choose a free coin from their own hand strength', () => {
   assert.equal(chooseBotCoin(weak.game, weak.bot, () => 0), null);
 });
 
-test('all bots in a phase can take coins concurrently', () => {
+test('each bot gets its own coin timer when the action gap is disabled', () => {
   const game = new GameRoom({ players: ['human', 'Robot Jack', 'Robot Sam'], botIds: ['Robot Jack', 'Robot Sam'], random: () => 0 });
   const room = { game, hostId: 'human' };
   game.phase = PHASES.ROUND_1_COINS;
@@ -52,7 +52,8 @@ test('all bots in a phase can take coins concurrently', () => {
     random: () => 0,
     setTimeoutFn: callback => { timers.push(callback); return timers.length; },
     clearTimeoutFn: () => {},
-    coinDelayMs: 0
+    coinDelayMs: 0,
+    coinActionGapMs: 0
   });
 
   driver.sync();
@@ -79,6 +80,7 @@ test('bot driver takes a coin, confirms after the host, and joins a skip vote', 
     setTimeoutFn: callback => { timers.push(callback); return timers.length; },
     clearTimeoutFn: () => {},
     coinDelayMs: 0,
+    coinActionGapMs: 0,
     rematchDelayMs: 0,
     skipDelayMs: 0
   });
@@ -151,6 +153,7 @@ test('round two lets unchanged bots take their previous coin before changed bots
     setTimeoutFn: fake.setTimeoutFn,
     clearTimeoutFn: fake.clearTimeoutFn,
     coinDelayMs: 0,
+    coinActionGapMs: 0,
     changeWaitMs: 500,
     changeWaitMaxMs: 2000
   });
@@ -186,6 +189,7 @@ test('an unchanged bot robbed by a front retreater moves to the next coin', () =
     setTimeoutFn: fake.setTimeoutFn,
     clearTimeoutFn: fake.clearTimeoutFn,
     coinDelayMs: 0,
+    coinActionGapMs: 0,
     changeWaitMs: 0,
     changeWaitMaxMs: 0
   });
@@ -232,4 +236,40 @@ test('failed grabs retry the same coin with a decreasing chance, then move down'
   const third = brain.nextAction(game, bot, () => 0);
   assert.equal(brain.failuresByCoin.get(1), 3);
   assert.equal(third.coin, 2, 'after the retry cap the bot moves to the next coin');
+});
+
+
+test('bot coin actions are separated by the global action gap', () => {
+  const game = new GameRoom({ players: ['A', 'B'], botIds: ['A', 'B'], random: () => 0.5 });
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['A', 'B']);
+  game.communityCards = [];
+  const timers = [];
+  const actions = [];
+  let now = 1000;
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'A' },
+    onChange: payload => { if (payload?.coinAction) actions.push(payload.coinAction); driver.sync(); },
+    random: () => 0,
+    now: () => now,
+    setTimeoutFn: (callback, delay) => { timers.push({ callback, delay }); return timers.length; },
+    clearTimeoutFn: () => {},
+    coinDelayMs: 0,
+    coinActionGapMs: 500,
+    changeWaitMs: 0,
+    changeWaitMaxMs: 0
+  });
+  driver.sync();
+  assert.equal(timers.length, 2, 'both bots schedule their first choice');
+  timers.shift().callback();
+  assert.equal(actions.length, 1, 'the first bot acts immediately');
+  const second = timers.shift();
+  second.callback();
+  assert.equal(actions.length, 1, 'the second bot waits for the global gap');
+  assert.ok(timers.some(item => item.delay === 500), 'the second action is rescheduled for the remaining gap');
+  now = 1500;
+  timers.shift().callback();
+  assert.equal(actions.length, 2, 'the second bot acts after 500ms');
+  driver.stop();
 });

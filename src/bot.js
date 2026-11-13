@@ -36,7 +36,8 @@ const BOT_STRATEGY = Object.freeze({
   grabRetryDecay: 0.5,
   maxGrabRetries: 2,
   changeWaitMs: 900,
-  changeWaitMaxMs: 2400
+  changeWaitMaxMs: 2400,
+  coinActionGapMs: 500
 });
 
 function clamp(value, min, max) {
@@ -821,7 +822,8 @@ class BotDriver {
     skipDelayMs = 300,
     strategy = {},
     changeWaitMs = null,
-    changeWaitMaxMs = null
+    changeWaitMaxMs = null,
+    coinActionGapMs = null
   }) {
     this.room = room;
     this.onChange = onChange;
@@ -836,6 +838,8 @@ class BotDriver {
     this.strategy = { ...BOT_STRATEGY, ...strategy };
     this.changeWaitMs = changeWaitMs ?? this.strategy.changeWaitMs ?? 900;
     this.changeWaitMaxMs = changeWaitMaxMs ?? this.strategy.changeWaitMaxMs ?? 2400;
+    this.coinActionGapMs = coinActionGapMs ?? this.strategy.coinActionGapMs ?? 500;
+    this.lastCoinActionAt = null;
     this.timers = new Map();
     this.brains = new Map();
     this.errorCounts = new Map();
@@ -847,9 +851,9 @@ class BotDriver {
     return this.brains.get(bot.id);
   }
 
-  schedule(key, baseDelay, action) {
+  schedule(key, baseDelay, action, jitter = true) {
     if (this.stopped || this.timers.has(key)) return;
-    const delay = Math.max(0, Math.floor(baseDelay + this.random() * baseDelay));
+    const delay = Math.max(0, Math.floor(baseDelay + (jitter ? this.random() * baseDelay : 0)));
     const timer = this.setTimeoutFn(() => {
       this.timers.delete(key);
       if (this.stopped) return;
@@ -914,8 +918,18 @@ class BotDriver {
   act(bot, phase, key, holdBots) {
     const game = this.room.game;
     if (!game || game.phase !== phase || bot.currentCoin !== null) return;
-    const brain = this.brainFor(bot);
     const now = this.now();
+    // Keep every bot coin action visible: after any bot action, wait at least
+    // the configured gap before another bot may move a coin. The gap is global
+    // across bots, so seven bots no longer empty the table in one burst.
+    if (this.lastCoinActionAt !== null && this.coinActionGapMs > 0) {
+      const sinceLast = now - this.lastCoinActionAt;
+      if (sinceLast < this.coinActionGapMs) {
+        this.schedule(key, this.coinActionGapMs - sinceLast, () => this.act(bot, phase, key, holdBots), false);
+        return;
+      }
+    }
+    const brain = this.brainFor(bot);
     brain.observeState(game, bot, now);
     brain.prepareRound(game, bot, now, this.random);
     if (brain.mode === 'climb') {
@@ -934,6 +948,7 @@ class BotDriver {
       game.moveCoin(action.coin, bot.id, owner);
       brain.onActionTaken(action.coin, owner);
       this.errorCounts.delete(key);
+      this.lastCoinActionAt = this.now();
       this.onChange({ coinAction: { type: 'MOVE', coin: action.coin, fromPlayerId: owner, toPlayerId: bot.id } });
     } catch (error) {
       this.onError(error);

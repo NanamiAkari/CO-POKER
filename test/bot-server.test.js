@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const { createServer } = require('../src/server');
 
-const BOT_TEST_OPTIONS = { coinDelayMs: 0, rematchDelayMs: 0, skipDelayMs: 0, changeWaitMs: 0, changeWaitMaxMs: 0 };
+const BOT_TEST_OPTIONS = { coinDelayMs: 0, rematchDelayMs: 0, skipDelayMs: 0, changeWaitMs: 0, changeWaitMaxMs: 0, coinActionGapMs: 0 };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fixture(t) {
