@@ -723,19 +723,13 @@ class BotBrain {
       if (!isFailedGrab) {
         this.round1Displaced = true;
         this.lastSteal = null;
-        this.target = theft.coin + 1 <= game.players.length ? theft.coin + 1 : null;
+        // No worse rank exists at the last coin: reclaim it instead of
+        // falling back to a much stronger free coin such as 1.
+        this.target = theft.coin + 1 <= game.players.length ? theft.coin + 1 : theft.coin;
         return;
       }
-      if (this.round1Contests < 1 && free.length) {
-        const strength = estimateStrength(game, bot);
-        const probability = contestProbability(strength, theft.coin, backup, game.players.length);
-        if (random() < probability) {
-          this.round1Contests += 1;
-          this.round1Backup = backup;
-          this.target = theft.coin;
-          return;
-        }
-      }
+      // A failed grab in round one does not retry; the previous displaced
+      // player takes its backup (often the remaining free coin).
       this.round1Failed = true;
       this.lastSteal = null;
       this.target = Number.isInteger(backup) ? backup : bestFreeCoin(theft.coin, free, random);

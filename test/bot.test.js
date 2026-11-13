@@ -348,3 +348,41 @@ test('a round-one bot robbed of its coin follows the next rank instead of the la
   assert.equal(actions[0].fromPlayerId, 'C');
   driver.stop();
 });
+
+test('a round-one cascade reclaims the last coin instead of handing coin 1 to the last holder', () => {
+  const game = new GameRoom({ players: ['H', 'B', 'C', 'D'], botIds: ['B', 'C'], random: () => 0.2 });
+  game.phase = PHASES.ROUND_1_COINS;
+  game.coinTable = new CoinTable(['H', 'B', 'C', 'D']);
+  game.communityCards = [];
+  const bots = ['B', 'C'].map(id => game.players.find(player => player.id === id));
+  bots.forEach(bot => { bot.holeCards = [{ rank: 10, suit: 's' }, { rank: 9, suit: 'h' }]; });
+  game.moveCoin(4, 'B');
+  game.moveCoin(3, 'C');
+  game.moveCoin(2, 'D');
+  const fake = fakeTimers();
+  const actions = [];
+  let driver;
+  driver = new BotDriver({
+    room: { game, hostId: 'H' },
+    onChange: payload => { if (payload?.coinAction) actions.push(payload.coinAction); driver.sync(); },
+    random: () => 0,
+    setTimeoutFn: fake.setTimeoutFn,
+    clearTimeoutFn: fake.clearTimeoutFn,
+    coinDelayMs: 0,
+    coinActionGapMs: 0,
+    changeWaitMs: 0,
+    changeWaitMaxMs: 0
+  });
+  driver.sync();
+  assert.equal(fake.timers.length, 0);
+  // H leaves coin 1 free and steals C's rank-3 coin. C should cascade to 4,
+  // the last holder B should reclaim 4, and C should take the free 1.
+  game.moveCoin(3, 'H', 'C');
+  driver.sync();
+  let guard = 0;
+  while (fake.timers.length && guard < 20) { fake.next(); guard += 1; }
+  assert.equal(game.players.find(player => player.id === 'B').currentCoin, 4);
+  assert.equal(game.players.find(player => player.id === 'C').currentCoin, 1);
+  assert.equal(actions.some(action => action.toPlayerId === 'B' && action.coin === 1), false);
+  driver.stop();
+});
