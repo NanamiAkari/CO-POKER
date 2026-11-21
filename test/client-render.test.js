@@ -818,3 +818,15 @@ test('match-point music plays once when the series reaches its final loss', asyn
   assert.deepEqual(calls.filter(call => call === 'play'), ['play']);
   assert.ok(view);
 });
+
+test('legacy music defaults migrate once to the quieter 10%', async () => {
+  let legacy;
+  await renderScreen(v => { legacy = v; }, undefined, { localStorage: { getItem: () => JSON.stringify({ sound: true, volumes: { music: 0.7 } }), setItem() {} } });
+  assert.equal(legacy.prefs.volumes.music, 0.1, 'the v0.11.0 70% default migrates');
+  let legacy30;
+  await renderScreen(v => { legacy30 = v; }, undefined, { localStorage: { getItem: () => JSON.stringify({ volumes: { music: 0.3 } }), setItem() {} } });
+  assert.equal(legacy30.prefs.volumes.music, 0.1, 'the v0.11.1 30% default migrates');
+  let kept;
+  await renderScreen(v => { kept = v; }, undefined, { localStorage: { getItem: () => JSON.stringify({ musicDefaultVersion: 2, volumes: { music: 0.3 } }), setItem() {} } });
+  assert.equal(kept.prefs.volumes.music, 0.3, 'a value saved after the migration is preserved');
+});

@@ -22,10 +22,12 @@
     const activeSeatAction=ref(null);
     const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series'), honorTip=ref(null);
     const notice=ref(''), noticeError=ref(false);
-    // The first v0.11.0 build defaulted the music slider to 70%. That exact
-    // stored value is the old default, so it migrates to the quieter 30%
-    // without touching any other saved preference; a real custom value stays.
-    const savedMusic=clampVolume(saved.volumes?.music,.3);
+    // v0.11.0 shipped a 70% default and v0.11.1 a 30% one. Both exact values
+    // are treated as the old defaults and migrate once to the quieter 10%;
+    // after the saved preferences carry the version, custom values stay.
+    const savedMusicVersion=Number(saved.musicDefaultVersion)||0;
+    const savedMusic=clampVolume(saved.volumes?.music,.1);
+    const musicDefault=savedMusicVersion<2&&(savedMusic===.7||savedMusic===.3)?.1:savedMusic;
     const prefs=reactive({
       sound:saved.sound===true,
       reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -35,7 +37,7 @@
         table:clampVolume(saved.volumes?.table,1),
         tomatoThrow:clampVolume(saved.volumes?.tomatoThrow,1),
         tomatoImpact:clampVolume(saved.volumes?.tomatoImpact,1),
-        music:savedMusic===.7?.3:savedMusic
+        music:musicDefault
       }
     });
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3});
@@ -653,7 +655,7 @@
       finishReveal();
     }
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
-    watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
+    watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value,musicDefaultVersion:2}));}catch{}},{deep:true});
     watch(()=>prefs.sound,enabled=>{
       if(!enabled){tomatoSound.reset();matchMusic.stop();return;}
       ensureAudioContext();
