@@ -14,6 +14,7 @@ const RoomChat = require('../public/room-chat');
 const TomatoInteractions = require('../public/tomato-interactions');
 const TomatoSound = require('../public/tomato-sound');
 const PlayerMarks = require('../public/player-marks');
+const MatchPointMusic = require('../public/match-point-music');
 
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const template = html.slice(html.indexOf('<div id="app"'), html.indexOf('<script src="/vendor'));
@@ -28,7 +29,7 @@ async function renderScreen(configure = () => {}, timers = {setTimeout, clearTim
       root = options;
       return { component(name, options) { components[name] = options; }, config: {}, mount() {} };
     } },
-    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, TomatoSound, PlayerMarks, matchMedia: () => ({ matches: false }) },
+    window: { TabletopArt: Art, SettlementDetails, HandHighlights, RoomChat, TomatoInteractions, TomatoSound, PlayerMarks, MatchPointMusic, matchMedia: () => ({ matches: false }) },
     document: { querySelector: () => null },
     localStorage: environment.localStorage || { getItem: () => null, setItem() {} },
     ...timers, console
@@ -59,6 +60,7 @@ test('actual Vue menu and settings templates render without missing bindings', a
   assert.match(settings, /总音量/);
   assert.match(settings, /番茄投掷/);
   assert.match(settings, /番茄命中/);
+  assert.match(settings, /音乐/);
   assert.match(settings, /演出节奏/);
 });
 
@@ -781,4 +783,38 @@ test('a category-only mark uses a pictogram instead of a text badge', async () =
   assert.match(seatB, /<svg viewBox="0 0 24 24"/);
   assert.doesNotMatch(seatB, /private-guess/);
   assert.doesNotMatch(seatB, /private-mark-tag/);
+});
+
+
+test('match-point music plays once when the series reaches its final loss', async () => {
+  const calls = [];
+  const stub = {
+    create() {
+      return {
+        play() { calls.push('play'); return true; },
+        stop() { calls.push('stop'); },
+        reset() {},
+        preload() { return true; },
+        refreshVolume() {},
+        playing: false
+      };
+    },
+    isMatchPoint: MatchPointMusic.isMatchPoint
+  };
+  let view;
+  await renderScreen(v => {
+    view = v;
+    v.prefs.sound = true;
+    v.state.phase = 'SETTLEMENT';
+    v.state.successCount = 0;
+    v.state.failureCount = 2;
+    v.state.options.seriesLength = 3;
+    assert.equal(v.matchPoint.value, true, 'two losses in a first-to-three series is match point');
+    assert.equal(v.playMatchPointMusic(), true);
+    assert.equal(v.playMatchPointMusic(), false, 'the cue plays only once per series');
+    v.state.failureCount = 1;
+    assert.equal(v.matchPoint.value, false, 'one loss is not yet match point');
+  }, { setTimeout, clearTimeout }, { window: { MatchPointMusic: stub } });
+  assert.deepEqual(calls.filter(call => call === 'play'), ['play']);
+  assert.ok(view);
 });

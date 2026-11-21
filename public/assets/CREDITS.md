@@ -24,6 +24,13 @@
 CC0 does not require attribution. The credits are kept here so the provenance
 of the shipped audio files remains clear.
 
+## bgm/never-give-up.mp3
+
+- Original: **绝不认输.mp3**（项目维护者提供的本地素材，原始位置 `sounds/bgm/-1/`）。
+- License: 仓库未附授权信息；公开发布或商用前请自行确认版权与授权范围。
+- Edits: none; copied byte-for-byte as `bgm/never-give-up.mp3`（约 6.2 MiB）。
+- Usage: 大场进入“再输一小局即告负”的决胜局面时播放一次，见 `public/match-point-music.js`。
+
 ## Considered alternatives
 
 - **splat.ogg** by gprosser — Freesound sound #360942 (CC0).

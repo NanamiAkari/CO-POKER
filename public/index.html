@@ -263,6 +263,7 @@
             <label class="setting-row volume-row"><span>桌面音效<small>硬币、翻牌与结算 {{volumePercent('table')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('table')" @input="setVolume('table',$event.target.value)" @change="previewSound('coin')" :disabled="!prefs.sound" aria-label="桌面音效音量"></label>
             <label class="setting-row volume-row"><span>番茄投掷<small>{{volumePercent('tomatoThrow')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('tomatoThrow')" @input="setVolume('tomatoThrow',$event.target.value)" @change="previewSound('throw')" :disabled="!prefs.sound" aria-label="番茄投掷音量"></label>
             <label class="setting-row volume-row"><span>番茄命中<small>{{volumePercent('tomatoImpact')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('tomatoImpact')" @input="setVolume('tomatoImpact',$event.target.value)" @change="previewSound('impact')" :disabled="!prefs.sound" aria-label="番茄命中音量"></label>
+            <label class="setting-row volume-row"><span>音乐<small>{{volumePercent('music')}}%</small></span><input type="range" min="0" max="100" step="1" :value="volumePercent('music')" @input="setVolume('music',$event.target.value)" :disabled="!prefs.sound" aria-label="音乐音量"></label>
             <label class="setting-row"><span>减少动态效果<small>保留阶段停顿，关闭移动和缩放</small></span><input type="checkbox" class="toggle" v-model="prefs.reducedMotion" aria-label="减少动态效果"></label>
             <label class="setting-row"><span>演出节奏<small>只改变你的观看速度</small></span><select v-model="prefs.pace" aria-label="演出节奏"><option value="relaxed">慢速</option><option value="standard">标准</option></select></label>
             <button class="text-button wide" @click="toggleFullscreen">{{fullscreen?'退出全屏':'全屏游玩'}} ⛶</button>
@@ -347,6 +348,7 @@
 <script src="/tomato-sound.js?v=20261107-volume"></script>
 <script src="/tomato-interactions.js?v=20261011-tomato"></script>
 <script src="/player-marks.js?v=20261112-icon-v4"></script>
-<script src="/game-client.js?v=20261113-coin-serial"></script>
+<script src="/match-point-music.js?v=20261121-matchpoint"></script>
+<script src="/game-client.js?v=20261121-matchpoint-music"></script>
 </body>
 </html>

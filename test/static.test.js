@@ -12,6 +12,7 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
     const homeHtml = await html.text();
     assert.match(homeHtml, /seat-layout\.css/);
     assert.match(homeHtml, /selection-guard\.css/);
+    assert.match(homeHtml, /match-point-music\.js/);
 
     for (const cssFile of ['seat-layout.css', 'selection-guard.css', 'player-marks.css']) {
       const css = await fetch(`http://127.0.0.1:${address.port}/${cssFile}?v=1`);
@@ -46,6 +47,17 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
       assert.equal(new TextDecoder().decode(bytes.slice(8, 12)), 'WAVE');
       assert.ok(bytes.length > 40, `${name} must contain audio frames`);
     }
+
+    const musicScript = await fetch(`http://127.0.0.1:${address.port}/match-point-music.js?v=1`);
+    assert.equal(musicScript.status, 200);
+    assert.match(musicScript.headers.get('content-type'), /^text\/javascript/);
+    assert.match(await musicScript.text(), /MatchPointMusic/);
+
+    const track = await fetch(`http://127.0.0.1:${address.port}/assets/bgm/never-give-up.mp3?v=1`);
+    assert.equal(track.status, 200);
+    assert.match(track.headers.get('content-type'), /^audio\/mpeg/);
+    assert.match(track.headers.get('cache-control'), /max-age=300/);
+    assert.ok((await track.arrayBuffer()).byteLength > 100000, 'the match-point track must be served');
   } finally {
     await server.close();
   }

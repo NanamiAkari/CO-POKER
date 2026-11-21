@@ -30,7 +30,8 @@
         master:clampVolume(saved.volumes?.master,1),
         table:clampVolume(saved.volumes?.table,1),
         tomatoThrow:clampVolume(saved.volumes?.tomatoThrow,1),
-        tomatoImpact:clampVolume(saved.volumes?.tomatoImpact,1)
+        tomatoImpact:clampVolume(saved.volumes?.tomatoImpact,1),
+        music:clampVolume(saved.volumes?.music,.7)
       }
     });
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3});
@@ -38,7 +39,7 @@
     const customSeriesLength=ref(SERIES_PRESETS.includes(roomSettings.seriesLength)?6:roomSettings.seriesLength);
     const pendingCoins=ref(new Set());
     let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext, coinTimers=new Map();
-    let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
+    let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer, matchPointPlayed=false;
     let receivedResultKey='', liveSkipState=null;
     const retiredResultKeys=new Set();
     const tomatoSound=window.TomatoSound.create({
@@ -76,6 +77,23 @@
       return Number.isInteger(value)&&value>=1?value:3;
     });
     const compactScorePips=computed(()=>seriesLength.value>7);
+    // The match-point cue is played once per series and is strictly cosmetic:
+    // it honours the global sound switch and never touches game state.
+    const matchMusic=window.MatchPointMusic.create({
+      enabled:()=>prefs.sound,
+      volume:()=>clampVolume(prefs.volumes.master)*clampVolume(prefs.volumes.music)
+    });
+    const matchPoint=computed(()=>window.MatchPointMusic.isMatchPoint({
+      seriesLength:seriesLength.value,
+      successCount:state.successCount,
+      failureCount:state.failureCount,
+      phase:state.phase
+    }));
+    function playMatchPointMusic(){
+      if(matchPointPlayed||!matchPoint.value||!prefs.sound)return false;
+      matchPointPlayed=true;
+      return matchMusic.play();
+    }
     const canAddBot=computed(()=>isHost.value&&state.phase==='WAITING'&&state.players.length<maxPlayers.value&&!pending.value&&!busy.value);
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
     const availableCoins=computed(()=>state.phase==='WAITING'?[]:Array.from({length:state.players.length},(_,i)=>i+1).filter(n=>!state.players.some(p=>p.currentCoin===n)));
@@ -464,6 +482,7 @@
       chat.resetChat();
       tomato.reset();
       tomatoSound.reset();
+      matchMusic.reset();matchPointPlayed=false;
       closeSeatActions();
       hideHonorTip();
       completedComparisonCount.value=0;closeComparisonDetail();
@@ -597,6 +616,11 @@
       completedComparisonCount.value=state.result?.comparisons.length || 0;
       if(state.phase==='GAME_OVER')seriesTableMode.value='series';
       presentation.value='summary';tone(state.result?.success?'win':'card');
+      // The score pips reach match point together with this summary, so the
+      // cue starts here rather than during the reveal. A finished series fades
+      // the track out instead of replaying it.
+      if(state.phase==='GAME_OVER'){matchPointPlayed=false;matchMusic.stop();}
+      else if(matchPoint.value)playMatchPointMusic();
     }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
@@ -626,10 +650,17 @@
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value}));}catch{}},{deep:true});
     watch(()=>prefs.sound,enabled=>{
-      if(!enabled){tomatoSound.reset();return;}
+      if(!enabled){tomatoSound.reset();matchMusic.stop();return;}
       ensureAudioContext();
       void tomatoSound.preload();
     },{immediate:true});
+    watch([()=>prefs.volumes.master,()=>prefs.volumes.music],()=>matchMusic.refreshVolume());
+    // Warm the track while the table is one loss away from match point so the
+    // cue starts on the beat. Repeated calls are idempotent and cached.
+    watch(()=>[state.failureCount,seriesLength.value,prefs.sound,inRoom.value],()=>{
+      if(!inRoom.value||!prefs.sound||state.phase==='GAME_OVER')return;
+      if(state.failureCount===Math.max(1,seriesLength.value-2))matchMusic.preload();
+    });
     watch([canOpenSeatActions,()=>state.players.map(player=>player.id)],()=>{if(!canOpenSeatActions.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
     watch(seriesTableMode,hideHonorTip);
@@ -637,7 +668,7 @@
     watch(()=>state.options,()=>{if(panel.value==='room-settings'||!inRoom.value)syncRoomSettingsFromState();},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom('',{keepMarks:true});window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,matchPoint,playMatchPointMusic,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
