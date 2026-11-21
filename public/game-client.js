@@ -22,6 +22,10 @@
     const activeSeatAction=ref(null);
     const completedComparisonCount=ref(0), comparisonHover=ref(null), comparisonFocus=ref(null), comparisonPinned=ref(null), seriesTableMode=ref('series'), honorTip=ref(null);
     const notice=ref(''), noticeError=ref(false);
+    // The first v0.11.0 build defaulted the music slider to 70%. That exact
+    // stored value is the old default, so it migrates to the quieter 30%
+    // without touching any other saved preference; a real custom value stays.
+    const savedMusic=clampVolume(saved.volumes?.music,.3);
     const prefs=reactive({
       sound:saved.sound===true,
       reducedMotion:saved.reducedMotion ?? window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -31,7 +35,7 @@
         table:clampVolume(saved.volumes?.table,1),
         tomatoThrow:clampVolume(saved.volumes?.tomatoThrow,1),
         tomatoImpact:clampVolume(saved.volumes?.tomatoImpact,1),
-        music:clampVolume(saved.volumes?.music,.7)
+        music:savedMusic===.7?.3:savedMusic
       }
     });
     const roomSettings=reactive({handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3});
@@ -602,7 +606,10 @@
       if(stageChange||next.result)clearPendingCoins();
       if(!['MOVE_COIN','RETURN_COIN'].includes(pendingCommand))unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
-      if(newHand){presentation.value='deal';await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
+      // The decisive round itself is the cue: the score is already at match
+      // point when this hand is dealt, while the summary of the loss that
+      // created it stays quiet.
+      if(newHand){presentation.value='deal';if(matchPoint.value)playMatchPointMusic();await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
       else if(movingAction){tone('coin');await startCoinFlight(movingAction.coin,movingFrom,epoch);}
       else if(stageChange&&!next.result&&COIN_PHASES.includes(next.phase)){tone('card');await sleep(prefs.reducedMotion?300:1450);}
       if(!live(epoch))return;
@@ -616,11 +623,9 @@
       completedComparisonCount.value=state.result?.comparisons.length || 0;
       if(state.phase==='GAME_OVER')seriesTableMode.value='series';
       presentation.value='summary';tone(state.result?.success?'win':'card');
-      // The score pips reach match point together with this summary, so the
-      // cue starts here rather than during the reveal. A finished series fades
-      // the track out instead of replaying it.
+      // The cue starts with the deciding hand, not with this summary; a
+      // finished series fades the track out instead of replaying it.
       if(state.phase==='GAME_OVER'){matchPointPlayed=false;matchMusic.stop();}
-      else if(matchPoint.value)playMatchPointMusic();
     }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
@@ -659,7 +664,7 @@
     // cue starts on the beat. Repeated calls are idempotent and cached.
     watch(()=>[state.failureCount,seriesLength.value,prefs.sound,inRoom.value],()=>{
       if(!inRoom.value||!prefs.sound||state.phase==='GAME_OVER')return;
-      if(state.failureCount===Math.max(1,seriesLength.value-2))matchMusic.preload();
+      if(state.failureCount>=Math.max(1,seriesLength.value-2))matchMusic.preload();
     });
     watch([canOpenSeatActions,()=>state.players.map(player=>player.id)],()=>{if(!canOpenSeatActions.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});

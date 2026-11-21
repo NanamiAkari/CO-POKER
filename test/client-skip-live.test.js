@@ -25,7 +25,7 @@ function settlement() {
   };
 }
 
-async function client() {
+async function client(options = {}) {
   let view, socket, now = 0, nextId = 0;
   const timers = new Map(), sent = [], errors = [];
   class FakeWebSocket {
@@ -41,7 +41,7 @@ async function client() {
       view = options.setup();
       return {component(){},config:{},mount(){}};
     }},
-    window:{TabletopArt:{},RoomChat:require('../public/room-chat'),TomatoInteractions:require('../public/tomato-interactions'),TomatoSound:require('../public/tomato-sound'),PlayerMarks:require('../public/player-marks'),MatchPointMusic:require('../public/match-point-music'),matchMedia:()=>({matches:false})},
+    window:{TabletopArt:{},RoomChat:require('../public/room-chat'),TomatoInteractions:require('../public/tomato-interactions'),TomatoSound:require('../public/tomato-sound'),PlayerMarks:require('../public/player-marks'),MatchPointMusic:options.MatchPointMusic||require('../public/match-point-music'),matchMedia:()=>({matches:false})},
     document:{querySelectorAll:()=>[],querySelector:()=>null},
     location:{protocol:'http:',host:'localhost'},WebSocket:FakeWebSocket,
     localStorage:{getItem:()=>null,setItem(){}},setTimeout,clearTimeout,
@@ -184,4 +184,34 @@ test('clicking one coin locks only that coin and releases it on the server confi
   assert.equal(c.view.coinLocked(1),true,'returning locks only the returned coin');
   assert.equal(c.sent.length,sentBefore+1);
   assert.deepEqual(c.errors,[]);
+});
+
+test('match-point music starts with the deciding hand instead of the loss summary', async () => {
+  const plays = [];
+  const Music = require('../public/match-point-music');
+  const stub = {
+    create: () => ({
+      play() { plays.push('play'); return true; },
+      stop() {},
+      reset() {},
+      preload() { return true; },
+      refreshVolume() {},
+      playing: false
+    }),
+    isMatchPoint: Music.isMatchPoint
+  };
+  const c = await client({ MatchPointMusic: stub });
+  c.view.prefs.sound = true;
+  const base = settlement();
+  const lost = { ...base, successCount: 1, failureCount: 2, result: { ...base.result, success: false }, comparisonSkip: true, comparisonSkipVotes: ['A', 'B', 'C', 'D'] };
+  c.receive(lost); await flush();
+  assert.equal(c.view.presentation.value, 'summary');
+  assert.equal(c.view.matchPoint.value, true);
+  assert.deepEqual(plays, [], 'the loss summary that creates match point stays quiet');
+  const next = { ...lost, phase: 'ROUND_1_COINS', result: null, finalHands: [], comparisonSkip: false, comparisonSkipVotes: [], communityCards: [], players: lost.players.map(player => ({ ...player, currentCoin: null })) };
+  c.receive(next); await flush(); await c.advance(1700);
+  assert.deepEqual(plays, ['play'], 'the deciding hand starts the track');
+  c.receive(next); await flush(); await c.advance(1700);
+  assert.deepEqual(plays, ['play'], 'later snapshots do not restart the track');
+  assert.deepEqual(c.errors, []);
 });

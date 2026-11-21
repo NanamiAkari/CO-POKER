@@ -11,7 +11,7 @@
   'use strict';
 
   const DEFAULT_SRC = '/assets/bgm/never-give-up.mp3?v=20261121-matchpoint';
-  const DEFAULT_GAIN = 0.65;
+  const DEFAULT_GAIN = 0.5;
   const FADE_IN_MS = 1200;
   const FADE_OUT_MS = 600;
   const FADE_STEP_MS = 50;

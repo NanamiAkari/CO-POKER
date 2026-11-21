@@ -118,5 +118,5 @@ test('volume stays inside a single element and follows preference changes', () =
   music.play();
   level = 0.2;
   music.refreshVolume();
-  assert.equal(audio.volume, 0.2 * 0.65);
+  assert.equal(audio.volume, 0.2 * 0.5);
 });
