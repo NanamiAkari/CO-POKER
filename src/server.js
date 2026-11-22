@@ -29,18 +29,9 @@ function playerName(value) {
 }
 
 class RoomManager {
-  constructor({ chatOptions, tomatoOptions } = {}) {
+  constructor({ chatOptions } = {}) {
     this.rooms = new Map();
     this.chatOptions = chatOptions;
-    // Tomato throws are intentionally a transient room event. Keep the
-    // limiter outside of game state so sending one can never release or
-    // enqueue a pending game action.
-    const configured = tomatoOptions || {};
-    this.tomatoOptions = {
-      now: typeof configured.now === 'function' ? configured.now : () => Date.now(),
-      windowMs: Number.isFinite(configured.windowMs) && configured.windowMs > 0 ? configured.windowMs : 2000,
-      maxThrows: Number.isInteger(configured.maxThrows) && configured.maxThrows > 0 ? configured.maxThrows : 3
-    };
   }
   create(options = {}) {
     options = validateOptions(options);
@@ -54,8 +45,7 @@ class RoomManager {
       bots: [],
       botDriver: null,
       options,
-      chat: new RoomChat(this.chatOptions),
-      tomato: { recentBySender: new Map() }
+      chat: new RoomChat(this.chatOptions)
     };
     this.rooms.set(id, room);
     return room;
@@ -103,22 +93,15 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
   wss.on('close', () => clearInterval(heartbeat));
   const send = (ws, type, payload = {}) => { if (ws.readyState === 1) ws.send(JSON.stringify({ type, ...payload })); };
   const tomatoError = (code, message) => { const error = new Error(message); error.code = code; return error; };
-  const acceptTomato = (room, senderId, targetId) => {
-    const now = manager.tomatoOptions.now();
-    const bucket = room.tomato.recentBySender.get(senderId) || [];
-    const recent = bucket.filter(timestamp => now - timestamp < manager.tomatoOptions.windowMs);
-    if (recent.length >= manager.tomatoOptions.maxThrows) {
-      throw tomatoError('TOMATO_RATE_LIMITED', '动作太快了，请稍后再试');
-    }
-    recent.push(now);
-    room.tomato.recentBySender.set(senderId, recent);
-    return {
-      actionId: `tomato-${crypto.randomBytes(9).toString('hex')}`,
-      fromPlayerId: senderId,
-      toPlayerId: targetId,
-      timestamp: now
-    };
-  };
+  // Tomato throws are intentionally unthrottled: every click is a transient
+  // room event, and each client owns the pacing and cleanup of the flight it
+  // renders. Nothing here touches or releases game state.
+  const createTomatoAction = (senderId, targetId) => ({
+    actionId: `tomato-${crypto.randomBytes(9).toString('hex')}`,
+    fromPlayerId: senderId,
+    toPlayerId: targetId,
+    timestamp: Date.now()
+  });
   const state = (room, viewer) => ({
     roomId: room.id, hostId: room.hostId, options: room.options, maxPlayers: MAX_PLAYERS,
     phase: room.game?.phase || PHASES.WAITING,
@@ -243,7 +226,7 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           if (!targetId) throw tomatoError('TOMATO_INVALID_TARGET', '请选择目标玩家');
           if (targetId === ws.id) throw tomatoError('TOMATO_SELF_TARGET', '不能向自己投掷番茄');
           if (!isRoomPlayer(room, targetId)) throw tomatoError('TOMATO_UNKNOWN_TARGET', '目标玩家不在房间内');
-          const action = acceptTomato(room, ws.id, targetId);
+          const action = createTomatoAction(ws.id, targetId);
           // This is deliberately a room event without a state snapshot. The
           // client owns the animation and the game state remains untouched.
           for (const client of room.clients.values()) send(client, 'TOMATO_THROW', { roomId: room.id, action });

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
-const { createServer, RoomManager } = require('../src/server');
+const { createServer } = require('../src/server');
 
 async function fixture(t, options = {}) {
   const server = createServer(options);
@@ -50,7 +50,7 @@ async function fixture(t, options = {}) {
 }
 
 test('THROW_TOMATO broadcasts one transient action to every member in the room', async t => {
-  const f = await fixture(t, { manager: new RoomManager({ tomatoOptions: { now: () => 123456 } }) });
+  const f = await fixture(t);
   const room = await f.room('alice', { spectatorSlots: 1 });
   const bob = await f.join(room, 'bob');
   const watcher = await f.join(room, 'watcher', 'SPECTATOR');
@@ -70,7 +70,8 @@ test('THROW_TOMATO broadcasts one transient action to every member in the room',
   assert.match(hostEvent.action.actionId, /^tomato-[0-9a-f]{18}$/);
   assert.equal(hostEvent.action.fromPlayerId, 'alice');
   assert.equal(hostEvent.action.toPlayerId, 'bob');
-  assert.equal(hostEvent.action.timestamp, 123456);
+  assert.equal(typeof hostEvent.action.timestamp, 'number');
+  assert.ok(hostEvent.action.timestamp > 0);
   assert.equal(room.host.queue.some(event => event.type === 'ROOM_STATE'), false, 'tomato does not enqueue a game snapshot');
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(elsewhere.host.queue.some(event => event.type === 'TOMATO_THROW'), false, 'tomato is room scoped');
@@ -106,25 +107,21 @@ test('players can throw only at a current player while spectators are rejected',
   assert.equal(error.code, 'TOMATO_NOT_MEMBER');
 });
 
-test('tomato rate limit is per sender and expires after the configured window', async t => {
-  let now = 1000;
-  const f = await fixture(t, { manager: new RoomManager({ tomatoOptions: { now: () => now, windowMs: 2000, maxThrows: 3 } }) });
+test('tomato throws have no cooldown and every click is broadcast', async t => {
+  const f = await fixture(t);
   const room = await f.room('alice');
   const bob = await f.join(room, 'bob');
-  const send = async (client, target, expected = 'TOMATO_THROW') => {
-    if (expected !== 'TOMATO_THROW') return client.request({ type: 'THROW_TOMATO', roomId: room.roomId, targetPlayerId: target }, expected);
-    const result = client.request({ type: 'THROW_TOMATO', roomId: room.roomId, targetPlayerId: target }, expected);
-    const other = client === room.host ? bob : room.host;
-    await other.next('TOMATO_THROW');
-    return result;
-  };
-  await send(room.host, 'bob');
-  await send(room.host, 'bob');
-  await send(room.host, 'bob');
-  assert.equal((await send(room.host, 'bob', 'TOMATO_ERROR')).code, 'TOMATO_RATE_LIMITED');
-  // A different sender has an independent bucket.
-  await send(bob, 'alice');
-  now += 2000;
-  await send(room.host, 'bob');
+  for (let index = 0; index < 8; index += 1) {
+    room.host.ws.send(JSON.stringify({ type: 'THROW_TOMATO', roomId: room.roomId, targetPlayerId: 'bob' }));
+  }
+  const ids = new Set();
+  for (let index = 0; index < 8; index += 1) {
+    const [hostEvent, bobEvent] = await Promise.all([room.host.next('TOMATO_THROW'), bob.next('TOMATO_THROW')]);
+    assert.equal(hostEvent.action.actionId, bobEvent.action.actionId);
+    assert.equal(hostEvent.action.toPlayerId, 'bob');
+    ids.add(hostEvent.action.actionId);
+  }
+  assert.equal(ids.size, 8, 'every click is a distinct action');
+  assert.equal(room.host.queue.some(event => event.type === 'TOMATO_ERROR'), false);
 });
 
