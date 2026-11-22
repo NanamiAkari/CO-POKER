@@ -76,15 +76,19 @@ test('THROW_TOMATO broadcasts one transient action to every member in the room',
   assert.equal(elsewhere.host.queue.some(event => event.type === 'TOMATO_THROW'), false, 'tomato is room scoped');
 });
 
-test('players and spectators can throw only at a current player, with authoritative identity', async t => {
+test('players can throw only at a current player while spectators are rejected', async t => {
   const f = await fixture(t);
   const room = await f.room('alice', { spectatorSlots: 1 });
   const bob = await f.join(room, 'bob');
   const watcher = await f.join(room, 'watcher', 'SPECTATOR');
 
   const send = (client, payload, type = 'TOMATO_THROW') => client.request({ type: 'THROW_TOMATO', roomId: room.roomId, ...payload }, type);
-  watcher.ws.send(JSON.stringify({ type: 'THROW_TOMATO', roomId: room.roomId, targetPlayerId: 'bob', toPlayerId: 'alice' }));
-  await Promise.all([room.host.next('TOMATO_THROW'), bob.next('TOMATO_THROW'), watcher.next('TOMATO_THROW')]);
+  const spectatorError = await send(watcher, { targetPlayerId: 'bob' }, 'TOMATO_ERROR');
+  assert.equal(spectatorError.code, 'TOMATO_SPECTATOR');
+  assert.equal(Object.hasOwn(spectatorError, 'state'), false);
+  room.host.ws.send(JSON.stringify({ type: 'THROW_TOMATO', roomId: room.roomId, targetPlayerId: 'bob', fromPlayerId: 'forged' }));
+  const [hostEvent] = await Promise.all([room.host.next('TOMATO_THROW'), bob.next('TOMATO_THROW'), watcher.next('TOMATO_THROW')]);
+  assert.equal(hostEvent.action.fromPlayerId, 'alice');
 
   for (const [client, payload, code] of [
     [room.host, { targetPlayerId: 'alice' }, 'TOMATO_SELF_TARGET'],

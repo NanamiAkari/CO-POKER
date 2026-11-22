@@ -306,14 +306,24 @@ test('joker rules, private deals, settlement, and next-game changes synchronize 
   assert.ok([...room.game.deck, ...room.game.players.flatMap(player => player.holeCards)].every(card => !card.joker));
 });
 
-test('room option updates reject active phases, cross-room requests, and spectator overflow', async t => {
+test('room options change in the lobby and between hands, but never during an active hand', async t => {
   const f = await fixture(t); const r = await f.room({spectatorSlots:1});
-  const active = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
-  assert.match(active.message, /after game over/);
+  const lobby = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ROOM_OPTIONS_UPDATED');
+  assert.equal(lobby.state.options.handCardCount, 3);
   const outsider = await f.connect(); await outsider.request({type:'CREATE_ROOM',playerId:'outsider'}, 'ROOM_CREATED');
-  const cross = await outsider.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
+  const cross = await outsider.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:2}}, 'ERROR');
   assert.match(cross.message, /Not a member/);
-  const room = f.server.manager.get(r.roomId); room.game = new (require('../src/game').GameRoom)({players:['a','b'], spectatorSlots:1}); room.game.phase = 'GAME_OVER';
+  const room = f.server.manager.get(r.roomId);
+  room.game = new (require('../src/game').GameRoom)({players:['a','b'], spectatorSlots:1, handCardCount:3});
+  room.game.phase = 'SETTLEMENT';
+  const between = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:2}}, 'ROOM_OPTIONS_UPDATED');
+  assert.equal(between.state.options.handCardCount, 2);
+  const frozen = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{seriesLength:5}}, 'ERROR');
+  assert.match(frozen.message, /between series/);
+  room.game.phase = 'ROUND_1_COINS';
+  const active = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{handCardCount:3}}, 'ERROR');
+  assert.match(active.message, /between hands/);
+  room.game.phase = 'GAME_OVER';
   room.spectators.push('watcher');
   const overflow = await r.host.request({type:'UPDATE_ROOM_OPTIONS',roomId:r.roomId,options:{spectatorSlots:0}}, 'ERROR');
   assert.match(overflow.message, /Spectator positions are full/);

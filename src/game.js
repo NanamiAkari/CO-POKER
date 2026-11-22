@@ -94,7 +94,7 @@ class GameRoom {
   }
 
   updateOptions(options = {}) {
-    if (this.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
+    if (![PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(this.phase)) throw new Error('Room options can only be changed between hands');
     if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Invalid room options');
     const allowed = new Set(['handCardCount', 'handUsageRule', 'historyVisibility', 'includeJokers', 'spectatorSlots', 'seriesLength']);
     for (const key of Object.keys(options)) if (!allowed.has(key)) throw new Error(`Unknown room option: ${key}`);

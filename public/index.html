@@ -61,7 +61,7 @@
           <div class="table-tools">
             <button class="icon-button" @click="openPanel('rules')" aria-label="玩法手册" title="规则">?</button>
             <button class="icon-button" @click="openPanel('settings')" aria-label="游戏设置" title="设置">⚙</button>
-            <button v-if="isHost&&state.phase==='GAME_OVER'" class="icon-button" @click="prepareRoomSettings" aria-label="下一场规则" title="设置下一场规则">☷</button>
+            <button v-if="isHost" class="icon-button" @click="prepareRoomSettings" aria-label="房间设置" title="房间设置">☷</button>
             <button class="icon-button" @click="requestLeave" aria-label="返回主菜单" title="离开牌桌">⌂</button>
           </div>
         </header>
@@ -270,14 +270,14 @@
             <p class="fine">设置自动保存在此浏览器。</p>
           </template>
           <template v-else-if="panel==='room-settings'">
-            <h2>下一场规则</h2><p class="fine">本大轮已结束。修改后，所有玩家需要重新确认下一场。</p>
+            <h2>房间设置</h2><p class="fine">{{roomSettingsHint}}</p>
             <div class="field-row"><label class="field">手牌数量<select v-model.number="roomSettings.handCardCount"><option :value="2">2 张</option><option :value="3">3 张</option></select></label><label class="field">观战座位<select v-model.number="roomSettings.spectatorSlots"><option :value="0">关闭观战</option><option :value="2">2 个座位</option><option :value="5">5 个座位</option></select></label></div>
             <label class="field">组牌方式<select v-model="roomSettings.handUsageRule"><option value="any">手牌与公共牌任选五张</option><option value="all-hole">必须使用全部手牌</option></select></label>
             <label class="field">历史硬币<select v-model="roomSettings.historyVisibility"><option value="all">所有人可见</option><option value="self">仅自己可见</option><option value="none">全部隐藏</option></select></label>
-            <label class="field">一局长度<small>先累计成功或失败该场次即结算整场</small><select :value="seriesLengthPreset" @change="applySeriesLengthPreset(($event.target.value==='custom')?'custom':Number($event.target.value))" aria-label="下一场游戏长度"><option v-for="n in seriesLengthPresets" :key="n" :value="n">先到 {{n}} 胜 / {{n}} 负</option><option value="custom">自定义</option></select></label>
-            <label v-if="seriesLengthPreset==='custom'" class="field">自定义场次<input type="number" min="6" max="99" v-model.number="customSeriesLength" @change="applyCustomSeriesLength" aria-label="下一场自定义累计场次"></label>
+            <label class="field">一局长度<small>先累计成功或失败该场次即结算整场</small><select :value="seriesLengthPreset" :disabled="!canEditSeriesLength" @change="applySeriesLengthPreset(($event.target.value==='custom')?'custom':Number($event.target.value))" aria-label="房间场次长度"><option v-for="n in seriesLengthPresets" :key="n" :value="n">先到 {{n}} 胜 / {{n}} 负</option><option value="custom">自定义</option></select></label>
+            <label v-if="seriesLengthPreset==='custom'" class="field">自定义场次<input type="number" min="6" max="99" :disabled="!canEditSeriesLength" v-model.number="customSeriesLength" @change="applyCustomSeriesLength" aria-label="房间自定义累计场次"></label>
             <label class="setting-row"><span>牌堆加入大小王<small>大王替代 ♥ ♦，小王替代 ♠ ♣</small></span><input type="checkbox" class="toggle" v-model="roomSettings.includeJokers" aria-label="牌堆加入大小王"></label>
-            <button class="gold-button wide" :disabled="pending||!isHost||state.phase!=='GAME_OVER'" @click="saveRoomSettings">保存下一场规则 ↗</button>
+            <button class="gold-button wide" :disabled="pending||!isHost||!roomSettingsEditable" @click="saveRoomSettings">{{state.phase==='GAME_OVER'?'保存下一场规则 ↗':'保存房间设置 ↗'}}</button>
           </template>
           <template v-else-if="panel==='rules'">
             <header class="rules-header"><span class="eyebrow">玩法手册</span><h2>{{rulePages[ruleStep].title}}</h2></header>

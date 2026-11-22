@@ -235,6 +235,8 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
           const room = manager.get(msg.roomId);
           if (!room) throw tomatoError('TOMATO_ROOM_NOT_FOUND', '房间已结束');
           if (ws.room !== room || room.clients.get(ws.id) !== ws) throw tomatoError('TOMATO_NOT_MEMBER', '请先加入这个房间');
+          // Spectators can watch the table but cannot interact with players.
+          if (ws.role !== 'PLAYER') throw tomatoError('TOMATO_SPECTATOR', '观战者不能投掷番茄');
           const targetId = typeof msg.targetPlayerId === 'string' ? msg.targetPlayerId.trim()
             : typeof msg.toPlayerId === 'string' ? msg.toPlayerId.trim()
               : typeof msg.action?.toPlayerId === 'string' ? msg.action.toPlayerId.trim() : '';
@@ -299,10 +301,20 @@ function createServer({ port = 0, host = '127.0.0.1', manager = new RoomManager(
         }
         if (msg.type === 'UPDATE_ROOM_OPTIONS') {
           if (ws.id !== room.hostId || ws.role !== 'PLAYER') throw new Error('Only host can update room options');
-          if (!room.game || room.game.phase !== PHASES.GAME_OVER) throw new Error('Room options can only be changed after game over');
+          // The lobby and the break between hands are safe edit points; an
+          // active deal or reveal would invalidate the cards already on the table.
+          const phase = room.game?.phase || PHASES.WAITING;
+          if (![PHASES.WAITING, PHASES.SETTLEMENT, PHASES.GAME_OVER].includes(phase)) {
+            throw new Error('Room options can only be changed between hands');
+          }
           const requested = validateOptions({ ...room.options, ...(msg.options || {}) });
           if (room.spectators.length > requested.spectatorSlots) throw new Error('Spectator positions are full');
-          room.game.updateOptions(requested);
+          // Changing the series target mid-series could end it retroactively;
+          // keep that switch for the lobby and the end of a series.
+          if (phase === PHASES.SETTLEMENT && requested.seriesLength !== room.options.seriesLength) {
+            throw new Error('Series length can only change between series');
+          }
+          if (room.game) room.game.updateOptions(requested);
           room.options = requested;
           return broadcast(room, 'ROOM_OPTIONS_UPDATED');
         }

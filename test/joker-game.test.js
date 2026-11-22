@@ -27,7 +27,7 @@ test('joker room option is off by default and requires a real boolean', () => {
 
 test('joker setting changes only between full games, resets votes, and persists across rematches', () => {
   const room = new GameRoom({ players: ['a', 'b'] });
-  assert.throws(() => room.updateOptions({ includeJokers: true }), /after game over/);
+  assert.throws(() => room.updateOptions({ includeJokers: true }), /between hands/);
   room.phase = PHASES.GAME_OVER;
   room.rematchConfirmed.add('a');
   for (const includeJokers of [null, undefined, 'true', 0]) {

@@ -433,10 +433,14 @@ test('spectators see every player\'s hole cards during live play while players k
     {id:'A', currentCoin:1, holeCards:[{rank:14,suit:'h'},{rank:13,suit:'c'}]},
     {id:'B', currentCoin:2, holeCards:[{rank:10,suit:'s'},{rank:9,suit:'d'}]}
   ];
+  let spectatorView;
   const spectator = await renderScreen(v => {
+    spectatorView = v;
     v.inRoom.value = true; v.connected.value = true; v.role.value = 'SPECTATOR'; v.playerId.value = 'watcher';
     Object.assign(v.state, {phase:'ROUND_2_COINS', players, communityCards:[{rank:2,suit:'c'},{rank:3,suit:'d'},{rank:4,suit:'h'}]});
   });
+  assert.equal(spectatorView.canSendTomato.value, false, 'spectators cannot throw tomatoes');
+  assert.equal(spectatorView.canOpenSeatActions.value, false, 'spectators cannot open the mark or tomato actions');
   assert.equal((spectator.match(/class="seat-cards spectator-reveal"/g) || []).length, 2);
   assert.match(spectator, /aria-label="A♥"/);
   assert.match(spectator, /aria-label="K♣"/);
@@ -829,4 +833,29 @@ test('legacy music defaults migrate once to the quieter 10%', async () => {
   let kept;
   await renderScreen(v => { kept = v; }, undefined, { localStorage: { getItem: () => JSON.stringify({ musicDefaultVersion: 2, volumes: { music: 0.3 } }), setItem() {} } });
   assert.equal(kept.prefs.volumes.music, 0.3, 'a value saved after the migration is preserved');
+});
+
+test('host can edit room settings in the lobby and between hands', async () => {
+  let view;
+  const between = await renderScreen(v => {
+    view = v;
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER';
+    Object.assign(v.state, { hostId:'A', phase:'SETTLEMENT', options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3} });
+    v.panel.value = 'room-settings';
+  });
+  assert.match(between, /aria-label="房间设置"/);
+  assert.match(between, /下一局开始生效/);
+  assert.match(between, /保存房间设置/);
+  assert.equal(view.roomSettingsEditable.value, true);
+  assert.equal(view.canEditSeriesLength.value, false, 'the series target stays frozen mid-series');
+
+  let lobbyView;
+  const lobby = await renderScreen(v => {
+    lobbyView = v;
+    v.inRoom.value = true; v.connected.value = true; v.playerId.value = 'A'; v.role.value = 'PLAYER';
+    Object.assign(v.state, { hostId:'A', phase:'WAITING', options:{handCardCount:2,handUsageRule:'any',historyVisibility:'all',spectatorSlots:2,includeJokers:false,seriesLength:3} });
+    v.panel.value = 'room-settings';
+  });
+  assert.match(lobby, /从本场开始生效/);
+  assert.equal(lobbyView.canEditSeriesLength.value, true, 'the lobby may set the series target');
 });

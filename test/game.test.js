@@ -185,9 +185,11 @@ test('ordinary rematch preserves counters and requires each player confirmation'
   assert.equal(room.rematchConfirmed.size, 0);
 });
 
-test('updates room options only after GAME_OVER and clears rematch votes', () => {
+test('updates room options between hands and clears rematch votes', () => {
   const room = new GameRoom({ players: ['a', 'b'], spectatorSlots: 2 });
-  assert.throws(() => room.updateOptions({ handCardCount: 3 }), /after game over/);
+  assert.throws(() => room.updateOptions({ handCardCount: 3 }), /between hands/);
+  room.phase = PHASES.SETTLEMENT;
+  assert.equal(room.updateOptions({ historyVisibility: 'self' }).historyVisibility, 'self');
   room.phase = PHASES.GAME_OVER;
   room.rematchConfirmed.add('a');
   const updated = room.updateOptions({ handCardCount: 3, handUsageRule: 'all-hole', historyVisibility: 'self', spectatorSlots: 5 });

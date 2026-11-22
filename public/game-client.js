@@ -89,6 +89,15 @@
       enabled:()=>prefs.sound,
       volume:()=>clampVolume(prefs.volumes.master)*clampVolume(prefs.volumes.music)
     });
+    // Room rules can be edited in the lobby and between hands. The series
+    // target is intentionally frozen while a series is still running.
+    const roomSettingsEditable=computed(()=>['WAITING','SETTLEMENT','GAME_OVER'].includes(state.phase));
+    const canEditSeriesLength=computed(()=>state.phase!=='SETTLEMENT');
+    const roomSettingsHint=computed(()=>{
+      if(state.phase==='GAME_OVER')return '本场已结束。修改后，所有玩家需要重新确认下一场。';
+      if(state.phase==='SETTLEMENT')return '修改后从下一局开始生效；场次长度需要等整场结束后再改。';
+      return '修改后从本场开始生效。';
+    });
     const matchPoint=computed(()=>window.MatchPointMusic.isMatchPoint({
       seriesLength:seriesLength.value,
       successCount:state.successCount,
@@ -106,8 +115,10 @@
     // Coin flights are independent. Only a blocking table presentation
     // (deal, round change, reveal) may freeze the whole tray.
     const canAct=computed(()=>connected.value&&role.value==='PLAYER'&&!busy.value&&COIN_PHASES.includes(state.phase));
-    const canSendTomato=computed(()=>connected.value&&!isResult.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
-    const canOpenSeatActions=computed(()=>connected.value&&inRoom.value&&(role.value==='PLAYER'||role.value==='SPECTATOR'));
+    // Spectators watch only: tomato throws and private player marks are
+    // player-only social actions.
+    const canSendTomato=computed(()=>connected.value&&!isResult.value&&role.value==='PLAYER');
+    const canOpenSeatActions=computed(()=>connected.value&&inRoom.value&&role.value==='PLAYER');
     const marks=Marks.create({
       Vue,
       storage:typeof localStorage==='undefined'?null:localStorage,
@@ -252,7 +263,7 @@
       return presentation.value==='table'?finalHandFor(id)?.holeCards?.[index]||null:null;
     }
     const historyLabel=computed(()=>({all:'历史公开',self:'历史仅自己可见',none:'隐藏历史'})[state.options?.historyVisibility]);
-    const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'下一场规则',mark:'标记玩家',leave:'离开牌桌'})[panel.value]);
+    const panelTitle=computed(()=>({create:'创建房间',join:'加入房间',rules:'玩法手册',settings:'游戏设置','room-settings':'房间设置',mark:'标记玩家',leave:'离开牌桌'})[panel.value]);
     const heroCards=[{rank:13,suit:'c'},{rank:14,suit:'h'},{rank:12,suit:'s'}];
     const rulePages=[
       {title:'游戏目标',topic:'目标',intro:'这是一款 2–8 人的合作游戏。每位玩家根据自己的手牌和公共牌，判断自己的牌力在全桌的排名。',items:[
@@ -426,9 +437,13 @@
       tone(kind);
     }
     function openPanel(which){closeSeatActions();chat.closeChat();if(panel.value==='mark')marks.closeMark();focusBeforePanel=document.activeElement;panel.value=which;notice.value='';if(which==='rules')ruleStep.value=0;if(which==='create')syncSeriesLengthControls();nextTick(()=>document.querySelector('.modal input,.modal .modal-close')?.focus());tone('card');}
-    function prepareRoomSettings(){if(!isHost.value||state.phase!=='GAME_OVER')return;syncRoomSettingsFromState();openPanel('room-settings');}
+    function prepareRoomSettings(){
+      if(!isHost.value)return;
+      if(!roomSettingsEditable.value){notify('本局进行中，结算后可以修改房间设置',true);return;}
+      syncRoomSettingsFromState();openPanel('room-settings');
+    }
     function saveRoomSettings(){
-      if(!isHost.value||state.phase!=='GAME_OVER')return;
+      if(!isHost.value||!roomSettingsEditable.value)return;
       applyCustomSeriesLength();
       command('UPDATE_ROOM_OPTIONS',{options:{...roomSettings,seriesLength:roomSettings.seriesLength}});
       panel.value=null;
@@ -530,6 +545,7 @@
         if(msg.type==='TOMATO_ERROR'){notify(msg.message||'番茄动作未发送',true);return;}
         if(msg.type==='ERROR'){unlock();clearPendingCoins();notify(translateError(msg.message),true);return;}
         if(msg.type==='ROOM_LEFT'||msg.type==='ROOM_ENDED'){resetRoom(msg.reason==='PLAYER_DISCONNECTED'?'有玩家断开连接，这桌已结束':'已回到主菜单');return;}
+        if(msg.type==='ROOM_OPTIONS_UPDATED')notify('房间设置已更新');
         if(msg.state){
           // A vote is live room metadata, not another queued animation step.
           // Update its count immediately even while playReveal is awaiting.
@@ -540,7 +556,7 @@
       ws.onerror=()=>{unlock();notify('暂时连接不上牌桌，请稍后重试',true);};
       ws.onclose=()=>{if(serial!==socketSerial)return;connected.value=false;unlock();if(inRoom.value)notify('连接已断开，可从右上角返回主菜单',true);};
     }
-    function translateError(text){return ({'Room not found':'没有找到这个房间，请核对房间号','Game already started':'这桌已开局，可以选择观战','Spectator positions are full':'观战席已满','Player positions are full':'这桌已经坐满了，可以选择观战','Player already owns a coin':'先归还自己的硬币，再取公共硬币','Only host can start':'等待房主开始','At least two players are required':'还需要一位朋友入座','Player name is already in use':'这个昵称已被使用，请换一个','Coin selection is closed':'这一轮已经结束，请等待下一阶段','Invalid source player':'这枚硬币刚被拿走，请重新选择'})[text] || (/[\u4e00-\u9fff]/.test(text)?text:'操作未完成，请检查当前牌局状态。');}
+    function translateError(text){return ({'Room not found':'没有找到这个房间，请核对房间号','Game already started':'这桌已开局，可以选择观战','Spectator positions are full':'观战席已满','Player positions are full':'这桌已经坐满了，可以选择观战','Player already owns a coin':'先归还自己的硬币，再取公共硬币','Only host can start':'等待房主开始','At least two players are required':'还需要一位朋友入座','Player name is already in use':'这个昵称已被使用，请换一个','Coin selection is closed':'这一轮已经结束，请等待下一阶段','Invalid source player':'这枚硬币刚被拿走，请重新选择','Room options can only be changed between hands':'本局进行中，结算后可以修改房间设置','Series length can only change between series':'场次长度需要等整场结束后再改'})[text] || (/[\u4e00-\u9fff]/.test(text)?text:'操作未完成，请检查当前牌局状态。');}
     function createRoom(){applyCustomSeriesLength();tone('card');connectAndSend({type:'CREATE_ROOM',options:{...roomSettings}});}
     function joinRoom(){const code=joinCode.value.trim().toUpperCase();if(!/^[A-F0-9]{6}$/.test(code)){notify('请输入六位房间号',true);return;}tone('card');connectAndSend({type:'JOIN_ROOM',roomId:code,role:joinRole.value});}
     function requestLeave(){openPanel('leave');}
@@ -675,7 +691,7 @@
     watch(()=>state.options,()=>{if(panel.value==='room-settings'||!inRoom.value)syncRoomSettingsFromState();},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom('',{keepMarks:true});window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,matchPoint,playMatchPointMusic,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,roomSettingsEditable,canEditSeriesLength,roomSettingsHint,matchPoint,playMatchPointMusic,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});
