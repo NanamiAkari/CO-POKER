@@ -45,7 +45,7 @@
     const customSeriesLength=ref(SERIES_PRESETS.includes(roomSettings.seriesLength)?6:roomSettings.seriesLength);
     const pendingCoins=ref(new Set());
     let socket=null, socketSerial=0, queue=Promise.resolve(), generation=0, noticeTimer, pendingTimer, pendingCommand=null, audioContext, coinTimers=new Map();
-    let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer, matchPointPlayed=false;
+    let lastResultKey='', activeFlights=new Set(), focusBeforePanel=null, detailCloseTimer;
     let receivedResultKey='', liveSkipState=null;
     const retiredResultKeys=new Set();
     const tomatoSound=window.TomatoSound.create({
@@ -83,12 +83,22 @@
       return Number.isInteger(value)&&value>=1?value:3;
     });
     const compactScorePips=computed(()=>seriesLength.value>7);
-    // The match-point cue is played once per series and is strictly cosmetic:
-    // it honours the global sound switch and never touches game state.
-    const matchMusic=window.MatchPointMusic.create({
-      enabled:()=>prefs.sound,
-      volume:()=>clampVolume(prefs.volumes.master)*clampVolume(prefs.volumes.music)
-    });
+    // Three match-point cues share the "音乐" volume and only ever play at the
+    // start of a deciding hand. Each cue keeps its own audio element so a
+    // switch never restarts the track that is still running.
+    const CUE_SOURCES={
+      tie:'/assets/bgm/match-point.mp3?v=20261127-match-point-cues',
+      win:'/assets/bgm/win-match-point.mp3?v=20261127-match-point-cues',
+      lose:'/assets/bgm/lose-match-point.mp3?v=20261127-match-point-cues'
+    };
+    const cuePlayers={};
+    for(const [cue,src] of Object.entries(CUE_SOURCES)){
+      cuePlayers[cue]=window.MatchPointMusic.create({
+        src,
+        enabled:()=>prefs.sound,
+        volume:()=>clampVolume(prefs.volumes.master)*clampVolume(prefs.volumes.music)
+      });
+    }
     // Room rules can be edited in the lobby and between hands. The series
     // target is intentionally frozen while a series is still running.
     const roomSettingsEditable=computed(()=>['WAITING','SETTLEMENT','GAME_OVER'].includes(state.phase));
@@ -98,16 +108,23 @@
       if(state.phase==='SETTLEMENT')return '修改后从下一局开始生效；场次长度需要等整场结束后再改。';
       return '修改后从本场开始生效。';
     });
-    const matchPoint=computed(()=>window.MatchPointMusic.isMatchPoint({
+    const matchPointCue=computed(()=>window.MatchPointMusic.matchPointCue({
       seriesLength:seriesLength.value,
       successCount:state.successCount,
       failureCount:state.failureCount,
       phase:state.phase
     }));
-    function playMatchPointMusic(){
-      if(matchPointPlayed||!matchPoint.value||!prefs.sound)return false;
-      matchPointPlayed=true;
-      return matchMusic.play();
+    function stopMatchPointCues(){for(const player of Object.values(cuePlayers))player.stop();}
+    function resetMatchPointCues(){for(const player of Object.values(cuePlayers))player.reset();}
+    function playMatchPointCue(cue=matchPointCue.value){
+      if(!prefs.sound||!cue||!cuePlayers[cue])return false;
+      for(const [name,player] of Object.entries(cuePlayers))if(name!==cue)player.stop();
+      const player=cuePlayers[cue];
+      // The same cue still running from the previous hand keeps playing; once
+      // it has ended, the next deciding hand starts it again.
+      if(player.playing)return true;
+      player.reset();
+      return player.play();
     }
     const canAddBot=computed(()=>isHost.value&&state.phase==='WAITING'&&state.players.length<maxPlayers.value&&!pending.value&&!busy.value);
     const myCoin=computed(()=>state.players.find(p=>p.id===playerId.value)?.currentCoin ?? null);
@@ -503,7 +520,7 @@
       chat.resetChat();
       tomato.reset();
       tomatoSound.reset();
-      matchMusic.reset();matchPointPlayed=false;
+      resetMatchPointCues();
       closeSeatActions();
       hideHonorTip();
       completedComparisonCount.value=0;closeComparisonDetail();
@@ -624,10 +641,13 @@
       if(stageChange||next.result)clearPendingCoins();
       if(!['MOVE_COIN','RETURN_COIN'].includes(pendingCommand))unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
-      // The decisive round itself is the cue: the score is already at match
-      // point when this hand is dealt, while the summary of the loss that
-      // created it stays quiet.
-      if(newHand){presentation.value='deal';if(matchPoint.value)playMatchPointMusic();await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);}
+      // Each deciding hand gets its cue — a tied match point, a win point or a
+      // loss point — while the settlement that created the score stays quiet.
+      if(newHand){
+        presentation.value='deal';
+        if(matchPointCue.value)playMatchPointCue();else stopMatchPointCues();
+        await nextTick();tone('card');await sleep(prefs.reducedMotion?300:1600);
+      }
       else if(movingAction){tone('coin');await startCoinFlight(movingAction.coin,movingFrom,epoch);}
       else if(stageChange&&!next.result&&COIN_PHASES.includes(next.phase)){tone('card');await sleep(prefs.reducedMotion?300:1450);}
       if(!live(epoch))return;
@@ -641,9 +661,9 @@
       completedComparisonCount.value=state.result?.comparisons.length || 0;
       if(state.phase==='GAME_OVER')seriesTableMode.value='series';
       presentation.value='summary';tone(state.result?.success?'win':'card');
-      // The cue starts with the deciding hand, not with this summary; a
-      // finished series fades the track out instead of replaying it.
-      if(state.phase==='GAME_OVER'){matchPointPlayed=false;matchMusic.stop();}
+      // A finished series fades any cue out; individual hands let their track
+      // keep running until the next deciding hand chooses to restart it.
+      if(state.phase==='GAME_OVER')stopMatchPointCues();
     }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
@@ -673,16 +693,16 @@
     async function replayReveal(){if(busy.value)return;busy.value=true;const epoch=generation;await playReveal(epoch);if(live(epoch))busy.value=false;}
     watch([prefs,name],()=>{try{localStorage.setItem('poker.preferences.v2',JSON.stringify({...prefs,name:name.value,musicDefaultVersion:2}));}catch{}},{deep:true});
     watch(()=>prefs.sound,enabled=>{
-      if(!enabled){tomatoSound.reset();matchMusic.stop();return;}
+      if(!enabled){tomatoSound.reset();stopMatchPointCues();return;}
       ensureAudioContext();
       void tomatoSound.preload();
     },{immediate:true});
-    watch([()=>prefs.volumes.master,()=>prefs.volumes.music],()=>matchMusic.refreshVolume());
-    // Warm the track while the table is one loss away from match point so the
-    // cue starts on the beat. Repeated calls are idempotent and cached.
-    watch(()=>[state.failureCount,seriesLength.value,prefs.sound,inRoom.value],()=>{
-      if(!inRoom.value||!prefs.sound||state.phase==='GAME_OVER')return;
-      if(state.failureCount>=Math.max(1,seriesLength.value-2))matchMusic.preload();
+    watch([()=>prefs.volumes.master,()=>prefs.volumes.music],()=>{for(const player of Object.values(cuePlayers))player.refreshVolume();});
+    // Warm the cue that applies to the current score so the next deciding hand
+    // starts on the beat. Repeated preloads are ignored by the module.
+    watch(()=>[state.successCount,state.failureCount,state.phase,seriesLength.value,prefs.sound,inRoom.value],()=>{
+      if(!inRoom.value||!prefs.sound)return;
+      if(matchPointCue.value)cuePlayers[matchPointCue.value].preload();
     });
     watch([canOpenSeatActions,()=>state.players.map(player=>player.id)],()=>{if(!canOpenSeatActions.value||!state.players.some(player=>player.id===activeSeatAction.value))closeSeatActions();});
     watch(chat.chatOpen,opened=>{if(opened)closeSeatActions();});
@@ -691,7 +711,7 @@
     watch(()=>state.options,()=>{if(panel.value==='room-settings'||!inRoom.value)syncRoomSettingsFromState();},{deep:true});
     onMounted(()=>{resize();chat.loadChatStickers();window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);document.addEventListener('keydown',trapFocus);document.addEventListener('pointerdown',dismissTableOverlays,true);document.addEventListener('click',dismissTableOverlays,true);document.getElementById('boot-status').hidden=true;});
     onBeforeUnmount(()=>{resetRoom('',{keepMarks:true});window.removeEventListener('resize',resize);document.removeEventListener('keydown',trapFocus);document.removeEventListener('fullscreenchange',resize);document.removeEventListener('pointerdown',dismissTableOverlays,true);document.removeEventListener('click',dismissTableOverlays,true);});
-  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,roomSettingsEditable,canEditSeriesLength,roomSettingsHint,matchPoint,playMatchPointMusic,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
+  return {inRoom,panel,panelTitle,ruleStep,rulePages,goRulePage,ruleKey,prefs,roomSettings,seriesLengthPreset,customSeriesLength,seriesLengthPresets:SERIES_PRESETS,applySeriesLengthPreset,applyCustomSeriesLength,volumePercent,setVolume,name,joinCode,joinRole,playerId,role,roomId,connected,pending,busy,pendingCoins,coinLocked,fullscreen,state,scale,presentation,revealIndex,selectionLit,revealEntry,compareIndex,comparison,compareEntries,comparisonSymbol,verdictVisible,summaryIndex,summaryEntry,sortedFinalHands,denseSettlement,seriesHistory,seriesRows,lifetimeRows,podiumRows,restRows,seriesTableMode,honorTip,showHonorTip,hideHonorTip,comparisonSteps,completedComparisonCount,inspectedComparison,comparisonDetail,activeSettlementPlayers,comparisonHover,comparisonFocus,comparisonPinned,toggleComparisonDetail,hoverComparison,keepComparisonDetail,leaveComparisonDetail,closeComparisonDetail,showFinalTable,showSettlementSummary,finalHandFor,opponentHoleCard,displayedSuccessCount,displayedFailureCount,seriesLength,compactScorePips,roomSettingsEditable,canEditSeriesLength,roomSettingsHint,matchPointCue,playMatchPointCue,showSkipComparison,canSkipComparison,hasSkippedComparison,requestComparisonSkip,opponents,maxPlayers,emptySeatCount,compactSeats,bots,canAddBot,addBot,removeBot,myCoin,canAct,canTakeCoin,canSendTomato,activeSeatAction,toggleSeatActions,closeSeatActions,sendTomatoAndClose,availableCoins,communitySlots,handCount,historyLabel,confirmed,isHost,isResult,phases,phaseIndex,notice,noticeError,heroCards,openPanel,prepareRoomSettings,saveRoomSettings,closePanel,previewSound,toggleFullscreen,copyRoom,createRoom,joinRoom,command,requestLeave,leaveRoom,takeCoin,returnCoin,stealCoin,replayReveal,isChosen,cardHighlight,sendTomato:tomato.sendTomato,tomatoFlights:tomato.tomatoFlights,...marks,canOpenSeatActions,openMark,saveMark,clearMark,privateGuessCards,privateGuessVisible,...chat,...Art};
   }});
   app.component('chat-bubble',{props:['message','sticker','showAuthor'],template:`<transition name="chat-bubble" mode="out-in"><div v-if="message" :key="message.id" class="chat-bubble" :class="{sticker:Boolean(sticker)}" :data-speaker="message.playerId" :data-message-id="message.id" :aria-label="message.playerId+'的聊天气泡'"><small v-if="showAuthor" class="chat-bubble-author">{{message.playerId}} · 观战</small><p v-if="message.kind==='text'" class="chat-bubble-text">{{message.text}}</p><img v-else-if="sticker" class="chat-bubble-sticker" :src="sticker.src" :alt="sticker.label"><p v-else class="chat-bubble-text">表情包暂不可用</p></div></transition>`});
   app.component('playing-card',{props:['card','highlight'],template:`<span class="playing-card" :class="['playing-card',cardClasses]" :aria-label="card?art.cardText(card):'牌背'"><span class="flip-inner"><span class="card-back"><img :src="art.cardBack" alt=""></span><span class="card-front"><img v-if="card" :src="art.cardImage(card)" :alt="art.cardText(card)"></span></span></span>`,setup(props){const cardClasses=computed(()=>({ 'is-face':Boolean(props.card), 'hand-highlight':Boolean(props.highlight?.meta?.primary), 'hand-kicker':Boolean(props.highlight?.meta?.kicker), ['highlight-'+(props.highlight?.meta?.role||'none')]:Boolean(props.highlight) }));return {art:Art,cardClasses};}});

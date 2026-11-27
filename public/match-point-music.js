@@ -1,16 +1,18 @@
 /*
  * Match-point music.
  *
- * When a series reaches the score where one more loss ends the whole series
- * (a best-of-five sitting at two losses, for example), the table plays the
- * project-provided "never give up" track once. The cue respects the global
- * sound switch, fades in and out so it never cuts across table cues, and is
- * strictly cosmetic: a blocked or missing audio file cannot affect play.
+ * Three project tracks cover the three deciding-hand scores of a series:
+ * a tied match point (both sides one win from the target), a hand that can
+ * win the series, and a hand that can lose it. Each create() call owns one
+ * track so the table can switch cues without restarting the wrong element.
+ * The cues respect the global sound switch, fade in and out so they never cut
+ * across table cues, and are strictly cosmetic: a blocked or missing audio
+ * file cannot affect play.
  */
 (() => {
   'use strict';
 
-  const DEFAULT_SRC = '/assets/bgm/never-give-up.mp3?v=20261121-matchpoint';
+  const DEFAULT_SRC = '/assets/bgm/match-point.mp3?v=20261127-match-point-cues';
   const DEFAULT_GAIN = 0.5;
   const FADE_IN_MS = 1200;
   const FADE_OUT_MS = 600;
@@ -30,13 +32,22 @@
     return Number.isFinite(number) ? Math.min(1, Math.max(0, number)) : 0;
   }
 
-  // Match point here always means "one more loss ends the big game": with a
-  // series length of 3 (first to three, best of five) that is two losses.
-  function isMatchPoint({ seriesLength, successCount, failureCount, phase } = {}) {
+  // A series is at match point when either side is one win from the target.
+  // A tie at that score is its own cue: with a series length of 3 (first to
+  // three, best of five) that is 2-2, while 2-1 is a win point and 1-2 is a
+  // loss point. The three states are mutually exclusive so a tied hand never
+  // plays the win or loss track.
+  function matchPointCue({ seriesLength, successCount, failureCount, phase } = {}) {
     const target = Number(seriesLength);
-    if (!Number.isInteger(target) || target < 1) return false;
-    if (phase === 'GAME_OVER') return false;
-    return Number(failureCount) === target - 1 && Number(successCount) < target;
+    if (!Number.isInteger(target) || target < 1) return null;
+    if (phase === 'GAME_OVER') return null;
+    const wins = Number(successCount), losses = Number(failureCount);
+    const atWinPoint = wins === target - 1;
+    const atLossPoint = losses === target - 1;
+    if (atWinPoint && atLossPoint) return 'tie';
+    if (atWinPoint) return 'win';
+    if (atLossPoint) return 'lose';
+    return null;
   }
 
   function create(options = {}) {
@@ -167,7 +178,7 @@
     };
   }
 
-  const api = { create, isMatchPoint, DEFAULT_SRC };
+  const api = { create, matchPointCue, DEFAULT_SRC };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof window === 'object') window.MatchPointMusic = api;
 })();

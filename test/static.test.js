@@ -53,11 +53,13 @@ test('serves fresh HTML and cacheable static assets with correct MIME types', as
     assert.match(musicScript.headers.get('content-type'), /^text\/javascript/);
     assert.match(await musicScript.text(), /MatchPointMusic/);
 
-    const track = await fetch(`http://127.0.0.1:${address.port}/assets/bgm/never-give-up.mp3?v=1`);
-    assert.equal(track.status, 200);
-    assert.match(track.headers.get('content-type'), /^audio\/mpeg/);
-    assert.match(track.headers.get('cache-control'), /max-age=300/);
-    assert.ok((await track.arrayBuffer()).byteLength > 100000, 'the match-point track must be served');
+    for (const name of ['match-point.mp3', 'win-match-point.mp3', 'lose-match-point.mp3']) {
+      const track = await fetch(`http://127.0.0.1:${address.port}/assets/bgm/${name}?v=1`);
+      assert.equal(track.status, 200);
+      assert.match(track.headers.get('content-type'), /^audio\/mpeg/);
+      assert.match(track.headers.get('cache-control'), /max-age=300/);
+      assert.ok((await track.arrayBuffer()).byteLength > 100000, `the ${name} cue must be served`);
+    }
   } finally {
     await server.close();
   }

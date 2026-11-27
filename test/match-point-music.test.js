@@ -33,15 +33,17 @@ function setup(options = {}) {
   return { audio, music };
 }
 
-test('isMatchPoint marks the score where one more loss ends the series', () => {
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 3, successCount: 0, failureCount: 2, phase: 'SETTLEMENT' }), true);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 3, successCount: 2, failureCount: 2, phase: 'SETTLEMENT' }), true);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 5, successCount: 0, failureCount: 4, phase: 'SETTLEMENT' }), true);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 3, successCount: 0, failureCount: 1, phase: 'SETTLEMENT' }), false);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 3, successCount: 3, failureCount: 2, phase: 'GAME_OVER' }), false);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 3, successCount: 3, failureCount: 2, phase: 'SETTLEMENT' }), false);
-  assert.equal(MatchPointMusic.isMatchPoint({ seriesLength: 0, successCount: 0, failureCount: -1, phase: 'SETTLEMENT' }), false);
-  assert.equal(MatchPointMusic.isMatchPoint({}), false);
+test('matchPointCue separates tied, win-point and loss-point scores', () => {
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 3, successCount: 2, failureCount: 2, phase: 'SETTLEMENT' }), 'tie');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 3, successCount: 2, failureCount: 1, phase: 'SETTLEMENT' }), 'win');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 3, successCount: 1, failureCount: 2, phase: 'SETTLEMENT' }), 'lose');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 5, successCount: 4, failureCount: 4, phase: 'SETTLEMENT' }), 'tie');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 5, successCount: 4, failureCount: 2, phase: 'SETTLEMENT' }), 'win');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 5, successCount: 2, failureCount: 4, phase: 'SETTLEMENT' }), 'lose');
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 3, successCount: 1, failureCount: 1, phase: 'SETTLEMENT' }), null);
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 3, successCount: 3, failureCount: 2, phase: 'GAME_OVER' }), null);
+  assert.equal(MatchPointMusic.matchPointCue({ seriesLength: 0, successCount: 0, failureCount: 0, phase: 'SETTLEMENT' }), null);
+  assert.equal(MatchPointMusic.matchPointCue({}), null);
 });
 
 test('play creates one local audio element and fades it up to the configured volume', () => {

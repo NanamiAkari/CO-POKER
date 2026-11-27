@@ -790,36 +790,45 @@ test('a category-only mark uses a pictogram instead of a text badge', async () =
 });
 
 
-test('match-point music plays once when the series reaches its final loss', async () => {
-  const calls = [];
+test('the three match-point cues follow the series score', async () => {
+  const plays = [];
   const stub = {
-    create() {
+    create(options) {
+      const key = options.src.includes('win-') ? 'win' : options.src.includes('lose-') ? 'lose' : 'tie';
+      let playing = false;
       return {
-        play() { calls.push('play'); return true; },
-        stop() { calls.push('stop'); },
-        reset() {},
+        play() { playing = true; plays.push(key); return true; },
+        stop() { playing = false; },
+        reset() { playing = false; },
         preload() { return true; },
         refreshVolume() {},
-        playing: false
+        get playing() { return playing; }
       };
     },
-    isMatchPoint: MatchPointMusic.isMatchPoint
+    matchPointCue: MatchPointMusic.matchPointCue
   };
   let view;
   await renderScreen(v => {
     view = v;
     v.prefs.sound = true;
     v.state.phase = 'SETTLEMENT';
-    v.state.successCount = 0;
-    v.state.failureCount = 2;
     v.state.options.seriesLength = 3;
-    assert.equal(v.matchPoint.value, true, 'two losses in a first-to-three series is match point');
-    assert.equal(v.playMatchPointMusic(), true);
-    assert.equal(v.playMatchPointMusic(), false, 'the cue plays only once per series');
+    v.state.successCount = 1;
+    v.state.failureCount = 2;
+    assert.equal(v.matchPointCue.value, 'lose', 'one win from elimination uses the loss cue');
+    assert.equal(v.playMatchPointCue(), true);
+    v.state.successCount = 2;
+    assert.equal(v.matchPointCue.value, 'tie', '2-2 in a first-to-three series is a tied match point');
+    assert.equal(v.playMatchPointCue(), true);
+    assert.equal(v.playMatchPointCue(), true, 'a running cue is not restarted within the same hand');
     v.state.failureCount = 1;
-    assert.equal(v.matchPoint.value, false, 'one loss is not yet match point');
+    assert.equal(v.matchPointCue.value, 'win', 'one win from the series uses the win cue');
+    assert.equal(v.playMatchPointCue(), true);
+    v.state.successCount = 1;
+    v.state.failureCount = 1;
+    assert.equal(v.matchPointCue.value, null, 'the middle of a series has no cue');
   }, { setTimeout, clearTimeout }, { window: { MatchPointMusic: stub } });
-  assert.deepEqual(calls.filter(call => call === 'play'), ['play']);
+  assert.deepEqual(plays, ['lose', 'tie', 'win']);
   assert.ok(view);
 });
 

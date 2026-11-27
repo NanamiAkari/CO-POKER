@@ -24,12 +24,26 @@
 CC0 does not require attribution. The credits are kept here so the provenance
 of the shipped audio files remains clear.
 
-## bgm/never-give-up.mp3
+## bgm/match-point.mp3
 
-- Original: **绝不认输.mp3**（项目维护者提供的本地素材，原始位置 `sounds/bgm/-1/`）。
+- Original: **绝不认输.mp3**（项目维护者提供的本地素材，原始位置 `sounds/bgm/MatchPoint/`）。
 - License: 仓库未附授权信息；公开发布或商用前请自行确认版权与授权范围。
-- Edits: none; copied byte-for-byte as `bgm/never-give-up.mp3`（约 6.2 MiB）。
-- Usage: 大场进入“再输一小局即告负”的决胜局面时播放一次，见 `public/match-point-music.js`。
+- Edits: none; copied byte-for-byte as `bgm/match-point.mp3`（约 6.2 MiB）。
+- Usage: 双方都到赛点的平局赛点局播放，见 `public/match-point-music.js`。
+
+## bgm/win-match-point.mp3
+
+- Original: **雨爱.mp3**（项目维护者提供的本地素材，原始位置 `sounds/bgm/Win-MatchPoint/`）。
+- License: 仓库未附授权信息；公开发布或商用前请自行确认版权与授权范围。
+- Edits: none; copied byte-for-byte as `bgm/win-match-point.mp3`（约 1.8 MiB）。
+- Usage: 差一局胜利的赛点局播放。
+
+## bgm/lose-match-point.mp3
+
+- Original: **放手一搏.mp3**（项目维护者提供的本地素材，原始位置 `sounds/bgm/Lose-MatchPoint/`）。
+- License: 仓库未附授权信息；公开发布或商用前请自行确认版权与授权范围。
+- Edits: none; copied byte-for-byte as `bgm/lose-match-point.mp3`（约 3.8 MiB）。
+- Usage: 差一局失败的赛点局播放。
 
 ## Considered alternatives
 
