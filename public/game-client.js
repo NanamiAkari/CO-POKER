@@ -120,9 +120,8 @@
       if(!prefs.sound||!cue||!cuePlayers[cue])return false;
       for(const [name,player] of Object.entries(cuePlayers))if(name!==cue)player.stop();
       const player=cuePlayers[cue];
-      // The same cue still running from the previous hand keeps playing; once
-      // it has ended, the next deciding hand starts it again.
-      if(player.playing)return true;
+      // Every deciding hand restarts its cue from the beginning, even when the
+      // same track is still running from the previous hand.
       player.reset();
       return player.play();
     }

@@ -186,7 +186,7 @@ test('clicking one coin locks only that coin and releases it on the server confi
   assert.deepEqual(c.errors,[]);
 });
 
-test('every deciding hand restarts its cue even after the track finished', async () => {
+test('every deciding hand restarts its cue from the beginning', async () => {
   const plays = [];
   const Music = require('../public/match-point-music');
   const players = {};
@@ -217,10 +217,9 @@ test('every deciding hand restarts its cue even after the track finished', async
   const next = { ...lost, phase: 'ROUND_1_COINS', result: null, finalHands: [], comparisonSkip: false, comparisonSkipVotes: [], communityCards: [], players: lost.players.map(player => ({ ...player, currentCoin: null })) };
   c.receive(next); await flush(); await c.advance(1700);
   assert.deepEqual(plays, ['lose'], 'the loss-point hand starts its track');
-  players.lose.playing = false;
   c.view.state.phase = 'ROUND_2_COINS';
   c.receive(next); await flush(); await c.advance(1700);
-  assert.deepEqual(plays, ['lose', 'lose'], 'a later deciding hand restarts the finished track');
+  assert.deepEqual(plays, ['lose', 'lose'], 'a later deciding hand restarts the running track from the beginning');
   const tie = { ...base, phase: 'SETTLEMENT', successCount: 2, failureCount: 2, result: { ...base.result, success: true }, comparisonSkip: true, comparisonSkipVotes: ['A', 'B', 'C', 'D'] };
   c.receive(tie); await flush();
   assert.equal(c.view.matchPointCue.value, 'tie');

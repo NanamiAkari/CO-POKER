@@ -820,7 +820,7 @@ test('the three match-point cues follow the series score', async () => {
     v.state.successCount = 2;
     assert.equal(v.matchPointCue.value, 'tie', '2-2 in a first-to-three series is a tied match point');
     assert.equal(v.playMatchPointCue(), true);
-    assert.equal(v.playMatchPointCue(), true, 'a running cue is not restarted within the same hand');
+    assert.equal(v.playMatchPointCue(), true, 'a running cue restarts from the beginning');
     v.state.failureCount = 1;
     assert.equal(v.matchPointCue.value, 'win', 'one win from the series uses the win cue');
     assert.equal(v.playMatchPointCue(), true);
@@ -828,7 +828,7 @@ test('the three match-point cues follow the series score', async () => {
     v.state.failureCount = 1;
     assert.equal(v.matchPointCue.value, null, 'the middle of a series has no cue');
   }, { setTimeout, clearTimeout }, { window: { MatchPointMusic: stub } });
-  assert.deepEqual(plays, ['lose', 'tie', 'win']);
+  assert.deepEqual(plays, ['lose', 'tie', 'tie', 'win']);
   assert.ok(view);
 });
 
