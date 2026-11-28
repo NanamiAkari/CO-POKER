@@ -660,11 +660,9 @@
       completedComparisonCount.value=state.result?.comparisons.length || 0;
       if(state.phase==='GAME_OVER')seriesTableMode.value='series';
       presentation.value='summary';tone(state.result?.success?'win':'card');
-      // The scoreboard changes at this summary, so a result that lands on a
-      // match point starts its cue immediately; the next deciding hand will
-      // restart the same cue from the beginning.
+      // Cues are chosen only when the next hand is dealt; a finished series
+      // still fades anything that is playing.
       if(state.phase==='GAME_OVER')stopMatchPointCues();
-      else if(matchPointCue.value)playMatchPointCue();
     }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
