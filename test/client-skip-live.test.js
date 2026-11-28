@@ -186,7 +186,7 @@ test('clicking one coin locks only that coin and releases it on the server confi
   assert.deepEqual(c.errors,[]);
 });
 
-test('every deciding hand restarts its cue from the beginning', async () => {
+test('match point starts at the settlement and every deciding hand restarts its cue', async () => {
   const plays = [];
   const Music = require('../public/match-point-music');
   const players = {};
@@ -213,19 +213,20 @@ test('every deciding hand restarts its cue from the beginning', async () => {
   c.receive(lost); await flush();
   assert.equal(c.view.presentation.value, 'summary');
   assert.equal(c.view.matchPointCue.value, 'lose');
-  assert.deepEqual(plays, [], 'the summary that creates the score stays quiet');
+  assert.deepEqual(plays, ['lose'], 'the settlement that reaches match point starts the loss cue');
   const next = { ...lost, phase: 'ROUND_1_COINS', result: null, finalHands: [], comparisonSkip: false, comparisonSkipVotes: [], communityCards: [], players: lost.players.map(player => ({ ...player, currentCoin: null })) };
   c.receive(next); await flush(); await c.advance(1700);
-  assert.deepEqual(plays, ['lose'], 'the loss-point hand starts its track');
+  assert.deepEqual(plays, ['lose', 'lose'], 'the loss-point hand restarts the cue from the beginning');
   c.view.state.phase = 'ROUND_2_COINS';
   c.receive(next); await flush(); await c.advance(1700);
-  assert.deepEqual(plays, ['lose', 'lose'], 'a later deciding hand restarts the running track from the beginning');
+  assert.deepEqual(plays, ['lose', 'lose', 'lose'], 'every later deciding hand restarts it again');
   const tie = { ...base, phase: 'SETTLEMENT', successCount: 2, failureCount: 2, result: { ...base.result, success: true }, comparisonSkip: true, comparisonSkipVotes: ['A', 'B', 'C', 'D'] };
   c.receive(tie); await flush();
   assert.equal(c.view.matchPointCue.value, 'tie');
+  assert.deepEqual(plays.slice(-1), ['tie'], 'a win to 2-2 switches to the tie cue at the summary');
   c.view.state.phase = 'ROUND_2_COINS';
   c.receive({ ...next, successCount: 2, failureCount: 2 }); await flush(); await c.advance(1700);
-  assert.deepEqual(plays.slice(-1), ['tie'], 'the tied deciding hand uses the tie cue');
+  assert.deepEqual(plays.slice(-1), ['tie'], 'the tied deciding hand restarts the tie cue');
   assert.equal(players.win.playing, false);
   assert.equal(players.lose.playing, false);
   assert.deepEqual(c.errors, []);

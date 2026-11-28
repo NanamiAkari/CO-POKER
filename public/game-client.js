@@ -640,8 +640,8 @@
       if(stageChange||next.result)clearPendingCoins();
       if(!['MOVE_COIN','RETURN_COIN'].includes(pendingCommand))unlock();
       if(!next.result){lastResultKey='';summaryIndex.value=0;completedComparisonCount.value=0;closeComparisonDetail();}
-      // Each deciding hand gets its cue — a tied match point, a win point or a
-      // loss point — while the settlement that created the score stays quiet.
+      // Every deciding hand evaluates the score again and restarts its cue from
+      // the beginning: a tied match point, a win point or a loss point.
       if(newHand){
         presentation.value='deal';
         if(matchPointCue.value)playMatchPointCue();else stopMatchPointCues();
@@ -660,9 +660,11 @@
       completedComparisonCount.value=state.result?.comparisons.length || 0;
       if(state.phase==='GAME_OVER')seriesTableMode.value='series';
       presentation.value='summary';tone(state.result?.success?'win':'card');
-      // A finished series fades any cue out; individual hands let their track
-      // keep running until the next deciding hand chooses to restart it.
+      // The scoreboard changes at this summary, so a result that lands on a
+      // match point starts its cue immediately; the next deciding hand will
+      // restart the same cue from the beginning.
       if(state.phase==='GAME_OVER')stopMatchPointCues();
+      else if(matchPointCue.value)playMatchPointCue();
     }
     async function playReveal(epoch){
       completedComparisonCount.value=0;closeComparisonDetail();
